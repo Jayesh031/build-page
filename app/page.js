@@ -4,11 +4,37 @@ import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useStore } from 'zustand';
-import { ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, Settings, Move, Sliders, Minus, Plus, ChevronDown } from 'lucide-react';
+import { 
+  ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, 
+  Move, Sliders, Minus, Plus, ChevronDown, Check, X as CloseIcon 
+} from 'lucide-react';
 
 import DroneScene from './components/DroneScene'; 
 import { useDroneStore, INVENTORY, VARIANTS } from './components/store'; 
 import { useTheme } from './components/ThemeProvider'; 
+
+// --- 1. CSS TO HIDE SPINNERS ---
+const GlobalStyles = () => (
+  <style jsx global>{`
+    /* Hide number input arrows (spinners) */
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { 
+      -webkit-appearance: none; 
+      margin: 0; 
+    }
+    input[type=number] {
+      -moz-appearance: textfield;
+    }
+  `}</style>
+);
+
+// --- NAVBAR BACKDROP ---
+const NavbarBackdrop = ({ isDark }) => {
+  if (!isDark) return null;
+  return (
+    <div className="fixed top-0 left-0 w-full h-24 bg-gradient-to-b from-slate-900 via-slate-900/80 to-transparent z-40 pointer-events-none" />
+  );
+};
 
 // --- ANIMATED TRASH BUTTON ---
 const TrashButton = ({ onClick, isDark }) => {
@@ -50,40 +76,65 @@ const TrashButton = ({ onClick, isDark }) => {
   );
 };
 
-// --- CUSTOM NUMBER STEPPER ---
-const AxisTuner = ({ label, value, onChange, isDark }) => {
-    const handleStep = (delta, e) => {
-        // Shift-click for larger steps (1.0 vs 0.1)
-        const step = e.shiftKey ? 1.0 : 0.1;
-        onChange(parseFloat((value + (delta * step)).toFixed(1)));
+// --- CUSTOM SELECT ---
+const CustomSelect = ({ options, value, onChange, isDark, placeholder }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
     };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
-    return (
-        <div className="flex flex-col items-center">
-            <span className={`text-[9px] font-bold mb-1 opacity-50 tracking-wider ${isDark ? "text-cyan-400" : "text-blue-600"}`}>
-                {label}-AXIS
-            </span>
-            <div className={`flex items-center rounded-lg border overflow-hidden ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-300"}`}>
-                <button 
-                    onClick={(e) => handleStep(-1, e)}
-                    className={`w-6 h-8 flex items-center justify-center hover:bg-opacity-20 hover:bg-current transition-colors ${isDark ? "text-slate-400" : "text-slate-600"}`}
-                >
-                    <Minus size={10} strokeWidth={3} />
-                </button>
-                <div className={`w-10 h-8 flex items-center justify-center text-xs font-mono font-bold border-x ${isDark ? "border-slate-700 text-cyan-50 bg-slate-800/50" : "border-slate-300 text-slate-800 bg-white"}`}>
-                    {value.toFixed(1)}
-                </div>
-                <button 
-                    onClick={(e) => handleStep(1, e)}
-                    className={`w-6 h-8 flex items-center justify-center hover:bg-opacity-20 hover:bg-current transition-colors ${isDark ? "text-slate-400" : "text-slate-600"}`}
-                >
-                    <Plus size={10} strokeWidth={3} />
-                </button>
-            </div>
-        </div>
-    );
+  const glassInput = isDark
+    ? "bg-slate-800/50 border-slate-600 text-slate-200"
+    : "bg-white/60 border-slate-200 text-slate-700";
+
+  return (
+    <div className="relative w-full" ref={containerRef}>
+      <button 
+        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between p-3 rounded-xl text-xs font-bold border transition-all duration-200 ${glassInput} ${isOpen ? 'ring-2 ring-blue-500/50 border-blue-500' : 'hover:border-blue-400'}`}
+      >
+        <span className={!value ? "opacity-50" : ""}>{value || placeholder}</span>
+        <motion.div animate={{ rotate: isOpen ? 180 : 0 }}>
+          <ChevronDown size={14} />
+        </motion.div>
+      </button>
+
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className={`absolute top-full left-0 right-0 mt-2 z-50 rounded-xl border shadow-2xl overflow-hidden max-h-48 overflow-y-auto ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200"}`}
+          >
+            {options.map((opt) => (
+              <button
+                key={opt}
+                onClick={() => { onChange(opt); setIsOpen(false); }}
+                className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors flex items-center justify-between
+                  ${isDark ? "hover:bg-slate-800 text-slate-300" : "hover:bg-slate-50 text-slate-700"}
+                  ${value === opt ? (isDark ? "bg-cyan-500/10 text-cyan-400" : "bg-blue-50 text-blue-600") : ""}
+                `}
+              >
+                {opt}
+                {value === opt && <Check size={12} />}
+              </button>
+            ))}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 };
-
 
 export default function BuilderPage() {
   const { theme } = useTheme(); 
@@ -111,6 +162,8 @@ export default function BuilderPage() {
   const [selectedVariant, setSelectedVariant] = useState('');
   const [isLeftCollapsed, setIsLeftCollapsed] = useState(false);
   const [isRightCollapsed, setIsRightCollapsed] = useState(false);
+  
+  const [activeAxis, setActiveAxis] = useState('Y'); 
 
   const activePart = parts.find(p => p.id === activePartId);
 
@@ -137,38 +190,57 @@ export default function BuilderPage() {
      setConfiguredVariantData({ type, variant: null }); 
   };
 
-  // --- STYLING CONSTANTS (Glassmorphism) ---
+  // Styles
   const glassPanel = isDark 
     ? "bg-slate-900/80 border-slate-700/50 text-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]" 
     : "bg-white/80 border-white/50 text-slate-800 shadow-[0_8px_32px_0_rgba(31,38,135,0.15)]";
     
-  const glassInput = isDark
-    ? "bg-slate-800/50 border-slate-600 text-slate-200 focus:border-blue-500"
-    : "bg-white/60 border-slate-200 text-slate-700 focus:border-blue-500";
-
   const accentColor = isDark ? "text-cyan-400" : "text-blue-600";
   const activeItemBg = isDark ? "bg-cyan-500/20 border-cyan-500/50" : "bg-blue-500/10 border-blue-500/30";
+
+  // Common Slider Logic
+  const getCurrentValue = () => {
+    if(!activePart) return 0;
+    if(activeAxis === 'X') return activePart.position[0];
+    if(activeAxis === 'Y') return activePart.position[1];
+    if(activeAxis === 'Z') return activePart.position[2];
+    return 0;
+  };
+
+  const handleValueChange = (val) => {
+    if(!activePart) return;
+    const newPos = [...activePart.position];
+    if(activeAxis === 'X') newPos[0] = val;
+    if(activeAxis === 'Y') newPos[1] = val;
+    if(activeAxis === 'Z') newPos[2] = val;
+    updatePartPosition(activePart.id, newPos[0], newPos[1], newPos[2]);
+  };
 
   if (!mounted) return null; 
 
   return (
     <div className={`relative h-screen w-screen overflow-hidden ${isDark ? "bg-slate-950" : "bg-slate-50"}`}>
       
-      {/* 1. FULL SCREEN 3D BACKGROUND */}
+      {/* 0. INJECT CSS FOR HIDING SPINNERS */}
+      <GlobalStyles />
+
+      {/* 1. NAVBAR BACKDROP */}
+      <NavbarBackdrop isDark={isDark} />
+
+      {/* 2. FULL SCREEN 3D BACKGROUND */}
       <div className="absolute inset-0 z-0">
-         <DroneScene isDark={isDark} />
+         <DroneScene isDark={isDark} isRightCollapsed={isRightCollapsed} />
       </div>
 
-      {/* 2. UI LAYER - Added pt-24 to clear Navbar */}
+      {/* 3. UI LAYER */}
       <div className="absolute inset-0 z-10 pointer-events-none pt-24 flex justify-between p-4">
         
-        {/* --- LEFT PANEL: INVENTORY --- */}
+        {/* --- LEFT PANEL --- */}
         <motion.div 
           initial={{ x: -300, opacity: 0 }}
           animate={{ x: isLeftCollapsed ? -260 : 0, opacity: 1 }}
           className={`pointer-events-auto relative flex flex-col w-72 h-[calc(100vh-8rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
         >
-          {/* Collapse Toggle */}
           <button 
             onClick={() => setIsLeftCollapsed(!isLeftCollapsed)}
             className={`absolute -right-4 top-6 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border backdrop-blur-md transition-all
@@ -177,14 +249,12 @@ export default function BuilderPage() {
             {isLeftCollapsed ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}
           </button>
 
-          {/* Header */}
           <div className={`p-5 border-b ${isDark ? "border-white/5" : "border-black/5"}`}>
             <h2 className={`text-xs font-bold uppercase tracking-[0.2em] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
               Component Library
             </h2>
           </div>
 
-          {/* List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin scrollbar-thumb-rounded">
             {Object.entries(INVENTORY).map(([category, items]) => (
               <div key={category}>
@@ -221,7 +291,6 @@ export default function BuilderPage() {
             ))}
           </div>
 
-          {/* Footer Actions */}
           <div className={`p-4 border-t grid grid-cols-2 gap-2 ${isDark ? "border-white/5" : "border-black/5"}`}>
              <button onClick={() => undo()} disabled={pastStates.length === 0}
                className={`py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all
@@ -236,14 +305,12 @@ export default function BuilderPage() {
           </div>
         </motion.div>
 
-
-        {/* --- RIGHT PANEL: CONFIG & BUILD --- */}
+        {/* --- RIGHT PANEL --- */}
         <motion.div 
            initial={{ x: 300, opacity: 0 }}
            animate={{ x: isRightCollapsed ? 260 : 0, opacity: 1 }}
            className={`pointer-events-auto relative flex flex-col w-80 h-[calc(100vh-8rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
         >
-          {/* Collapse Toggle */}
           <button 
             onClick={() => setIsRightCollapsed(!isRightCollapsed)}
             className={`absolute -left-4 top-6 w-8 h-8 rounded-full flex items-center justify-center shadow-lg border backdrop-blur-md transition-all
@@ -266,20 +333,16 @@ export default function BuilderPage() {
             </div>
 
             {VARIANTS[selectedPartType]?.length > 0 && (
-               <div className="relative">
-                 <select 
-                   className={`w-full p-3 pl-3 rounded-xl text-xs font-bold appearance-none outline-none transition-all ${glassInput}`}
-                   value={selectedVariant}
-                   onChange={(e) => {
-                      setSelectedVariant(e.target.value);
-                      setConfiguredVariantData({ type: selectedPartType, variant: e.target.value });
-                   }}
-                 >
-                   <option value="">Select Variant...</option>
-                   {VARIANTS[selectedPartType].map(v => <option key={v} value={v}>{v}</option>)}
-                 </select>
-                 <div className="absolute right-3 top-3 pointer-events-none opacity-50"><ChevronDown size={14} /></div>
-               </div>
+               <CustomSelect 
+                  options={VARIANTS[selectedPartType]}
+                  value={selectedVariant}
+                  placeholder="Select Variant..."
+                  isDark={isDark}
+                  onChange={(val) => {
+                      setSelectedVariant(val);
+                      setConfiguredVariantData({ type: selectedPartType, variant: val });
+                  }}
+               />
             )}
           </div>
 
@@ -328,100 +391,128 @@ export default function BuilderPage() {
         </motion.div>
       </div>
 
-
-      {/* 3. BOTTOM FLOATING CONTROL DECK */}
+      {/* 4. COMPACT COMMAND BAR (Bottom) */}
       <AnimatePresence>
       {activePartId && (
         <motion.div 
            initial={{ y: 100, opacity: 0 }}
            animate={{ y: 0, opacity: 1 }}
            exit={{ y: 100, opacity: 0 }}
-           className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-20 pointer-events-auto"
+           className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20 pointer-events-auto"
         >
-          <div className={`flex items-center gap-6 p-4 rounded-2xl backdrop-blur-xl border border-t-white/20 shadow-2xl ${glassPanel}`}>
+          {/* THE PILL CONTAINER */}
+          <div className={`flex items-center h-16 px-4 rounded-full backdrop-blur-2xl border shadow-2xl transition-all duration-300
+             ${isDark ? "bg-slate-900/90 border-slate-700/50 shadow-black/50" : "bg-white/90 border-white/80 shadow-slate-200/50"}
+          `}>
              
-             {/* Part Info */}
-             <div className="flex items-center gap-4 pl-2 border-r border-white/10 pr-6">
-                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${activeItemBg} ${accentColor}`}>
+             {/* LEFT: Info & Tools */}
+             <div className="flex items-center gap-4 pr-6 mr-6 border-r border-gray-500/20">
+                {/* Icon */}
+                <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activeItemBg} ${accentColor}`}>
                    {activePart && getIcon(activePart.type)}
                 </div>
-                <div>
-                  <div className="text-[10px] font-bold uppercase opacity-50 tracking-widest">Editing</div>
-                  <div className="text-sm font-extrabold whitespace-nowrap">{activePart ? getFriendlyName(activePart.type) : "Part"}</div>
-                </div>
-             </div>
-
-             {/* Rotation & Mode */}
-             <div className="flex items-center gap-3">
-                <button onClick={rotateActivePart} className={`p-3 rounded-xl transition-all border ${isDark ? "bg-black/20 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"}`} title="Rotate 45°">
-                   <RotateCcw size={18} />
-                </button>
                 
-                <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
-
-                {/* Mode Toggle */}
-                <div className={`flex p-1 rounded-xl border ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-300"}`}>
-                   <button 
-                     onClick={togglePlacementMode}
-                     title="Free Move"
-                     className={`p-2.5 rounded-lg transition-all ${placementMode === 'free' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50 hover:opacity-100"}`}
-                   >
-                     <Move size={18} />
+                {/* Actions */}
+                <div className="flex items-center gap-2">
+                   <button onClick={rotateActivePart} 
+                     className={`w-10 h-10 rounded-full flex items-center justify-center transition-all 
+                        ${isDark ? "hover:bg-white/10 text-slate-200" : "hover:bg-slate-100 text-slate-700"}`}>
+                     <RotateCcw size={18} />
                    </button>
-                   <button 
-                     onClick={togglePlacementMode}
-                     title="Precision"
-                     className={`p-2.5 rounded-lg transition-all ${placementMode === 'precision' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50 hover:opacity-100"}`}
-                   >
-                     <Sliders size={18} />
-                   </button>
+                   
+                   {/* Mode Switch Pill */}
+                   <div className={`flex p-1 rounded-full ${isDark ? "bg-black/30" : "bg-slate-100"}`}>
+                      <button onClick={togglePlacementMode} 
+                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${placementMode === 'free' ? (isDark ? "bg-slate-700 text-cyan-400" : "bg-white text-blue-600 shadow-sm") : "opacity-50"}`}>
+                         <Move size={16} />
+                      </button>
+                      <button onClick={togglePlacementMode} 
+                         className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${placementMode === 'precision' ? (isDark ? "bg-slate-700 text-cyan-400" : "bg-white text-blue-600 shadow-sm") : "opacity-50"}`}>
+                         <Sliders size={16} />
+                      </button>
+                   </div>
                 </div>
              </div>
 
-             {/* Spacing Divider */}
-             <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
+             {/* CENTER: Dynamic Controls */}
+             <div className="flex items-center gap-4 min-w-[280px]">
+                {placementMode === 'precision' ? (
+                   <>
+                     {/* Axis Tabs */}
+                     <div className="flex gap-1">
+                        {['X', 'Y', 'Z'].map(axis => (
+                           <button 
+                             key={axis}
+                             onClick={() => setActiveAxis(axis)}
+                             className={`w-8 h-8 rounded-full text-[10px] font-bold transition-all
+                                ${activeAxis === axis 
+                                  ? (isDark ? "bg-cyan-500 text-black" : "bg-blue-600 text-white") 
+                                  : (isDark ? "bg-slate-800 text-slate-400 hover:text-white" : "bg-slate-100 text-slate-500 hover:text-slate-900")}
+                             `}
+                           >
+                             {axis}
+                           </button>
+                        ))}
+                     </div>
+                     
+                     {/* Stepper + Input */}
+                     <div className="flex items-center gap-2 flex-1">
+                        <button onClick={() => handleValueChange(parseFloat((getCurrentValue() - 0.5).toFixed(1)))} 
+                           className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-opacity-80 transition-colors ${isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-700"}`}>
+                           <Minus size={14} />
+                        </button>
+                        
+                        <input 
+                           type="number" 
+                           value={getCurrentValue()} 
+                           onChange={(e) => handleValueChange(parseFloat(e.target.value))}
+                           className={`w-16 h-8 text-center rounded-lg text-sm font-mono font-bold bg-transparent border outline-none 
+                              ${isDark ? "border-slate-700 text-cyan-50 bg-slate-800/50" : "border-slate-200 text-slate-800 bg-white"}`}
+                        />
+                        
+                        <button onClick={() => handleValueChange(parseFloat((getCurrentValue() + 0.5).toFixed(1)))} 
+                           className={`w-8 h-8 flex items-center justify-center rounded-full hover:bg-opacity-80 transition-colors ${isDark ? "bg-slate-800 text-slate-200" : "bg-slate-100 text-slate-700"}`}>
+                           <Plus size={14} />
+                        </button>
+                     </div>
+                   </>
+                ) : (
+                   /* FREE MODE: Simple Slider */
+                   <div className="flex-1 flex items-center gap-3">
+                      <span className={`text-[10px] font-bold opacity-60 w-12 text-right ${isDark ? "text-slate-300" : "text-slate-600"}`}>HEIGHT</span>
+                      <input 
+                        type="range" min="0" max="50" step="0.5"
+                        value={activePart?.position[1] || 0}
+                        onChange={(e) => updatePartPosition(activePart.id, undefined, parseFloat(e.target.value), undefined)}
+                        className="flex-1 h-1.5 rounded-full appearance-none bg-slate-400/30 accent-current cursor-ew-resize"
+                      />
+                      <span className={`text-xs font-mono font-bold w-10 ${isDark ? "text-slate-200" : "text-slate-800"}`}>{activePart?.position[1].toFixed(1)}m</span>
+                   </div>
+                )}
+             </div>
 
-             {/* DYNAMIC CONTROLS */}
-             {placementMode === 'precision' && activePart ? (
-               <div className="flex gap-4">
-                 {['X', 'Y', 'Z'].map((axis, i) => (
-                    <AxisTuner 
-                        key={axis} 
-                        label={axis} 
-                        value={activePart.position[i]} 
-                        isDark={isDark}
-                        onChange={(val) => {
-                             const newPos = [...activePart.position];
-                             newPos[i] = val;
-                             updatePartPosition(activePart.id, newPos[0], newPos[1], newPos[2]);
-                        }} 
-                    />
-                 ))}
-               </div>
-             ) : (
-                <div className="flex flex-col w-48 px-2">
-                    <div className="flex justify-between text-[10px] font-bold opacity-50 mb-2">
-                      <span>ELEVATION (Y)</span>
-                      <span className="font-mono">{activePart?.position[1].toFixed(1)}m</span>
-                    </div>
-                    <input 
-                      type="range" min="0" max="50" step="0.5"
-                      value={activePart?.position[1] || 0}
-                      onChange={(e) => updatePartPosition(activePart.id, undefined, parseFloat(e.target.value), undefined)}
-                      className="w-full h-1.5 bg-slate-400/30 rounded-full appearance-none accent-current cursor-ew-resize"
-                    />
-                </div>
-             )}
+             {/* RIGHT: Confirm / Close */}
+             <div className="pl-6 ml-6 border-l border-gray-500/20 flex gap-2">
+                <button 
+                  onClick={lockActivePart}
+                  className="w-10 h-10 rounded-full bg-emerald-500 hover:bg-emerald-600 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20 transition-transform hover:scale-105 active:scale-95"
+                >
+                  <Check size={20} />
+                </button>
+             </div>
 
-             <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
-
-             <button 
-               onClick={lockActivePart}
-               className="ml-2 px-6 py-3.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95"
-             >
-               CONFIRM
-             </button>
           </div>
+
+          {/* Precision Mode Tip */}
+          {placementMode === 'precision' && (
+             <motion.div 
+               initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }}
+               className={`absolute -top-8 left-1/2 -translate-x-1/2 text-[10px] px-3 py-1 rounded-full backdrop-blur-md border ${isDark ? "bg-black/40 border-slate-700 text-slate-300" : "bg-white/60 border-slate-200 text-slate-500"}`}
+             >
+                {activeAxis}-Axis Active
+             </motion.div>
+          )}
+
         </motion.div>
       )}
       </AnimatePresence>
