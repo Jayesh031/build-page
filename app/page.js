@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import gsap from 'gsap';
 import { useGSAP } from '@gsap/react';
 import { useStore } from 'zustand';
-import { ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, Settings, Trash2, Move, Sliders } from 'lucide-react';
+import { ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, Settings, Move, Sliders, Minus, Plus, ChevronDown } from 'lucide-react';
 
 import DroneScene from './components/DroneScene'; 
 import { useDroneStore, INVENTORY, VARIANTS } from './components/store'; 
@@ -50,9 +50,43 @@ const TrashButton = ({ onClick, isDark }) => {
   );
 };
 
+// --- CUSTOM NUMBER STEPPER ---
+const AxisTuner = ({ label, value, onChange, isDark }) => {
+    const handleStep = (delta, e) => {
+        // Shift-click for larger steps (1.0 vs 0.1)
+        const step = e.shiftKey ? 1.0 : 0.1;
+        onChange(parseFloat((value + (delta * step)).toFixed(1)));
+    };
+
+    return (
+        <div className="flex flex-col items-center">
+            <span className={`text-[9px] font-bold mb-1 opacity-50 tracking-wider ${isDark ? "text-cyan-400" : "text-blue-600"}`}>
+                {label}-AXIS
+            </span>
+            <div className={`flex items-center rounded-lg border overflow-hidden ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-300"}`}>
+                <button 
+                    onClick={(e) => handleStep(-1, e)}
+                    className={`w-6 h-8 flex items-center justify-center hover:bg-opacity-20 hover:bg-current transition-colors ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                >
+                    <Minus size={10} strokeWidth={3} />
+                </button>
+                <div className={`w-10 h-8 flex items-center justify-center text-xs font-mono font-bold border-x ${isDark ? "border-slate-700 text-cyan-50 bg-slate-800/50" : "border-slate-300 text-slate-800 bg-white"}`}>
+                    {value.toFixed(1)}
+                </div>
+                <button 
+                    onClick={(e) => handleStep(1, e)}
+                    className={`w-6 h-8 flex items-center justify-center hover:bg-opacity-20 hover:bg-current transition-colors ${isDark ? "text-slate-400" : "text-slate-600"}`}
+                >
+                    <Plus size={10} strokeWidth={3} />
+                </button>
+            </div>
+        </div>
+    );
+};
+
+
 export default function BuilderPage() {
   const { theme } = useTheme(); 
-  // Force a re-render or check if theme is undefined initially
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -104,7 +138,6 @@ export default function BuilderPage() {
   };
 
   // --- STYLING CONSTANTS (Glassmorphism) ---
-  // Dark: Deep slate/black with blur. Light: Frosty white with blur.
   const glassPanel = isDark 
     ? "bg-slate-900/80 border-slate-700/50 text-slate-200 shadow-[0_8px_32px_0_rgba(0,0,0,0.37)]" 
     : "bg-white/80 border-white/50 text-slate-800 shadow-[0_8px_32px_0_rgba(31,38,135,0.15)]";
@@ -116,7 +149,7 @@ export default function BuilderPage() {
   const accentColor = isDark ? "text-cyan-400" : "text-blue-600";
   const activeItemBg = isDark ? "bg-cyan-500/20 border-cyan-500/50" : "bg-blue-500/10 border-blue-500/30";
 
-  if (!mounted) return null; // Prevent hydration mismatch
+  if (!mounted) return null; 
 
   return (
     <div className={`relative h-screen w-screen overflow-hidden ${isDark ? "bg-slate-950" : "bg-slate-50"}`}>
@@ -126,14 +159,14 @@ export default function BuilderPage() {
          <DroneScene isDark={isDark} />
       </div>
 
-      {/* 2. UI LAYER (Pointer events none allows clicking through to canvas where UI isn't) */}
-      <div className="absolute inset-0 z-10 pointer-events-none pt-20 flex justify-between p-4">
+      {/* 2. UI LAYER - Added pt-24 to clear Navbar */}
+      <div className="absolute inset-0 z-10 pointer-events-none pt-24 flex justify-between p-4">
         
         {/* --- LEFT PANEL: INVENTORY --- */}
         <motion.div 
           initial={{ x: -300, opacity: 0 }}
           animate={{ x: isLeftCollapsed ? -260 : 0, opacity: 1 }}
-          className={`pointer-events-auto relative flex flex-col w-72 h-[calc(100vh-6rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
+          className={`pointer-events-auto relative flex flex-col w-72 h-[calc(100vh-8rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
         >
           {/* Collapse Toggle */}
           <button 
@@ -208,7 +241,7 @@ export default function BuilderPage() {
         <motion.div 
            initial={{ x: 300, opacity: 0 }}
            animate={{ x: isRightCollapsed ? 260 : 0, opacity: 1 }}
-           className={`pointer-events-auto relative flex flex-col w-80 h-[calc(100vh-6rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
+           className={`pointer-events-auto relative flex flex-col w-80 h-[calc(100vh-8rem)] rounded-3xl backdrop-blur-xl border border-t-white/10 ${glassPanel}`}
         >
           {/* Collapse Toggle */}
           <button 
@@ -222,7 +255,6 @@ export default function BuilderPage() {
           <div className={`p-5 border-b ${isDark ? "border-white/5" : "border-black/5"}`}>
             <h2 className={`text-xs font-bold uppercase tracking-[0.2em] mb-4 ${isDark ? "text-slate-400" : "text-slate-500"}`}>Configurator</h2>
             
-            {/* Active Selection Display */}
             <div className={`p-4 rounded-2xl mb-4 border ${isDark ? "bg-black/20 border-white/5" : "bg-white/40 border-black/5"}`}>
               <div className="flex items-center gap-3 mb-1">
                  <div className={`${accentColor}`}>{getIcon(selectedPartType)}</div>
@@ -233,7 +265,6 @@ export default function BuilderPage() {
               </div>
             </div>
 
-            {/* Variant Selector */}
             {VARIANTS[selectedPartType]?.length > 0 && (
                <div className="relative">
                  <select 
@@ -247,12 +278,11 @@ export default function BuilderPage() {
                    <option value="">Select Variant...</option>
                    {VARIANTS[selectedPartType].map(v => <option key={v} value={v}>{v}</option>)}
                  </select>
-                 <div className="absolute right-3 top-3 pointer-events-none opacity-50"><ChevronDownIcon /></div>
+                 <div className="absolute right-3 top-3 pointer-events-none opacity-50"><ChevronDown size={14} /></div>
                </div>
             )}
           </div>
 
-          {/* Current Build List */}
           <div className="flex-1 overflow-y-auto p-4 space-y-2">
              <h3 className={`text-[10px] font-bold uppercase mb-3 opacity-60 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
                Installed Parts <span className={`ml-1 px-1.5 py-0.5 rounded-full text-[9px] ${isDark ? "bg-white/10" : "bg-black/5"}`}>{parts.length}</span>
@@ -290,7 +320,6 @@ export default function BuilderPage() {
              )}
           </div>
           
-          {/* Reset Action */}
           <div className={`p-4 ${isDark ? "border-t border-white/5" : "border-t border-black/5"}`}>
             <button onClick={resetScene} className="w-full py-3 rounded-xl text-xs font-bold uppercase tracking-wider text-red-500 hover:bg-red-500/10 transition-colors">
               Reset Build
@@ -300,93 +329,97 @@ export default function BuilderPage() {
       </div>
 
 
-      {/* 3. BOTTOM FLOATING CONTROL DECK (Contextual) */}
+      {/* 3. BOTTOM FLOATING CONTROL DECK */}
       <AnimatePresence>
       {activePartId && (
         <motion.div 
            initial={{ y: 100, opacity: 0 }}
            animate={{ y: 0, opacity: 1 }}
            exit={{ y: 100, opacity: 0 }}
-           className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20 pointer-events-auto"
+           className="absolute bottom-10 left-1/2 transform -translate-x-1/2 z-20 pointer-events-auto"
         >
-          <div className={`flex items-center gap-4 p-3 pr-6 rounded-2xl backdrop-blur-xl border border-t-white/20 shadow-2xl ${glassPanel}`}>
+          <div className={`flex items-center gap-6 p-4 rounded-2xl backdrop-blur-xl border border-t-white/20 shadow-2xl ${glassPanel}`}>
              
              {/* Part Info */}
-             <div className="flex items-center gap-3 pl-2 border-r border-white/10 pr-4">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${activeItemBg} ${accentColor}`}>
+             <div className="flex items-center gap-4 pl-2 border-r border-white/10 pr-6">
+                <div className={`w-12 h-12 rounded-xl flex items-center justify-center shadow-lg ${activeItemBg} ${accentColor}`}>
                    {activePart && getIcon(activePart.type)}
                 </div>
                 <div>
-                  <div className="text-[10px] font-bold uppercase opacity-50">Editing</div>
-                  <div className="text-xs font-bold whitespace-nowrap">{activePart ? getFriendlyName(activePart.type) : "Part"}</div>
+                  <div className="text-[10px] font-bold uppercase opacity-50 tracking-widest">Editing</div>
+                  <div className="text-sm font-extrabold whitespace-nowrap">{activePart ? getFriendlyName(activePart.type) : "Part"}</div>
                 </div>
              </div>
 
-             {/* Tools */}
-             <div className="flex items-center gap-2">
-                <button onClick={rotateActivePart} className={`p-2.5 rounded-xl transition-all ${isDark ? "hover:bg-white/10" : "hover:bg-black/5"}`} title="Rotate 45°">
+             {/* Rotation & Mode */}
+             <div className="flex items-center gap-3">
+                <button onClick={rotateActivePart} className={`p-3 rounded-xl transition-all border ${isDark ? "bg-black/20 border-white/10 hover:bg-white/10" : "bg-white border-slate-200 hover:bg-slate-50"}`} title="Rotate 45°">
                    <RotateCcw size={18} />
                 </button>
                 
-                <div className={`h-8 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
+                <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
 
                 {/* Mode Toggle */}
-                <div className={`flex p-1 rounded-xl ${isDark ? "bg-black/30" : "bg-slate-200/50"}`}>
+                <div className={`flex p-1 rounded-xl border ${isDark ? "bg-black/40 border-slate-700" : "bg-slate-100 border-slate-300"}`}>
                    <button 
                      onClick={togglePlacementMode}
-                     className={`p-2 rounded-lg transition-all ${placementMode === 'free' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50"}`}
+                     title="Free Move"
+                     className={`p-2.5 rounded-lg transition-all ${placementMode === 'free' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50 hover:opacity-100"}`}
                    >
-                     <Move size={16} />
+                     <Move size={18} />
                    </button>
                    <button 
                      onClick={togglePlacementMode}
-                     className={`p-2 rounded-lg transition-all ${placementMode === 'precision' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50"}`}
+                     title="Precision"
+                     className={`p-2.5 rounded-lg transition-all ${placementMode === 'precision' ? (isDark ? "bg-slate-700 text-cyan-400 shadow-sm" : "bg-white text-blue-600 shadow-sm") : "opacity-50 hover:opacity-100"}`}
                    >
-                     <Sliders size={16} />
+                     <Sliders size={18} />
                    </button>
                 </div>
              </div>
 
-             {/* Dynamic Controls */}
+             {/* Spacing Divider */}
+             <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
+
+             {/* DYNAMIC CONTROLS */}
              {placementMode === 'precision' && activePart ? (
-               <div className="flex gap-3 px-2">
+               <div className="flex gap-4">
                  {['X', 'Y', 'Z'].map((axis, i) => (
-                    <div key={axis} className="flex flex-col w-16">
-                       <label className="text-[9px] font-bold opacity-50 mb-1 text-center">{axis}</label>
-                       <input 
-                         type="number" 
-                         step="0.5"
-                         value={activePart.position[i].toFixed(1)}
-                         onChange={(e) => {
+                    <AxisTuner 
+                        key={axis} 
+                        label={axis} 
+                        value={activePart.position[i]} 
+                        isDark={isDark}
+                        onChange={(val) => {
                              const newPos = [...activePart.position];
-                             newPos[i] = parseFloat(e.target.value);
+                             newPos[i] = val;
                              updatePartPosition(activePart.id, newPos[0], newPos[1], newPos[2]);
-                         }}
-                         className={`w-full text-center p-1 rounded text-xs font-mono bg-transparent border-b ${isDark ? "border-white/20 focus:border-cyan-500" : "border-black/20 focus:border-blue-500"} outline-none`}
-                       />
-                    </div>
+                        }} 
+                    />
                  ))}
                </div>
              ) : (
-                <div className="flex flex-col w-32 px-2">
-                    <div className="flex justify-between text-[9px] font-bold opacity-50 mb-1">
-                      <span>HEIGHT</span>
-                      <span>{activePart?.position[1].toFixed(1)}m</span>
+                <div className="flex flex-col w-48 px-2">
+                    <div className="flex justify-between text-[10px] font-bold opacity-50 mb-2">
+                      <span>ELEVATION (Y)</span>
+                      <span className="font-mono">{activePart?.position[1].toFixed(1)}m</span>
                     </div>
                     <input 
                       type="range" min="0" max="50" step="0.5"
                       value={activePart?.position[1] || 0}
                       onChange={(e) => updatePartPosition(activePart.id, undefined, parseFloat(e.target.value), undefined)}
-                      className="w-full h-1 bg-slate-400/30 rounded-full appearance-none accent-current cursor-ew-resize"
+                      className="w-full h-1.5 bg-slate-400/30 rounded-full appearance-none accent-current cursor-ew-resize"
                     />
                 </div>
              )}
 
+             <div className={`h-10 w-px mx-1 ${isDark ? "bg-white/10" : "bg-black/10"}`}></div>
+
              <button 
                onClick={lockActivePart}
-               className="ml-2 px-6 py-3 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-105"
+               className="ml-2 px-6 py-3.5 rounded-xl font-bold text-xs bg-emerald-500 hover:bg-emerald-600 text-white shadow-lg shadow-emerald-500/20 transition-all hover:scale-105 active:scale-95"
              >
-               DONE
+               CONFIRM
              </button>
           </div>
         </motion.div>
@@ -396,10 +429,3 @@ export default function BuilderPage() {
     </div>
   );
 }
-
-// Simple SVG Icon helper
-const ChevronDownIcon = () => (
-  <svg width="10" height="6" viewBox="0 0 10 6" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M1 1L5 5L9 1" />
-  </svg>
-);

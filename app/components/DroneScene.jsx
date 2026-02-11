@@ -131,7 +131,8 @@ function DragManager() {
   return null;
 }
 
-export default function DroneScene({ isDark }) {
+// Added isRightCollapsed prop here
+export default function DroneScene({ isDark, isRightCollapsed }) {
   const parts = useDroneStore((state) => state.parts);
   const activePartId = useDroneStore((state) => state.activePartId);
   const isCarrying = useDroneStore((state) => state.isCarrying);
@@ -153,17 +154,27 @@ export default function DroneScene({ isDark }) {
     }
   };
 
+  // Logic: If panel is open (not collapsed), shift left by 360px. If collapsed, only shift 80px.
+  const gizmoMargin = isRightCollapsed ? [80, 80] : [360, 80];
+
   return (
     <div className="w-full h-full">
       <Canvas shadows camera={{ position: [50, 50, 50], fov: 45 }}>
-        {/* Force Light Background for visibility of dark parts */}
-        <color attach="background" args={['#f1f5f9']} />
+        <color attach="background" args={[isDark ? '#0f172a' : '#f1f5f9']} />
         
-        <Environment preset="city" /> 
-        <directionalLight position={[10, 20, 10]} intensity={1.5} castShadow shadow-mapSize={[1024, 1024]} />
-        <ambientLight intensity={0.5} />
+        <Environment preset={isDark ? "night" : "city"} /> 
+        <directionalLight position={[10, 20, 10]} intensity={isDark ? 0.8 : 1.5} castShadow shadow-mapSize={[1024, 1024]} />
+        <ambientLight intensity={isDark ? 0.2 : 0.5} />
         
-        <Grid infiniteGrid fadeDistance={250} sectionColor="#cbd5e1" cellColor="#e2e8f0" cellSize={10} sectionSize={50} />
+        <Grid 
+          infiniteGrid 
+          fadeDistance={250} 
+          sectionColor={isDark ? "#1e293b" : "#cbd5e1"} 
+          cellColor={isDark ? "#334155" : "#e2e8f0"} 
+          cellSize={10} 
+          sectionSize={50} 
+        />
+        
         <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={200} blur={2} far={10} />
 
         <Suspense fallback={null}>
@@ -190,8 +201,13 @@ export default function DroneScene({ isDark }) {
         </Suspense>
         
         <OrbitControls makeDefault />
-        <GizmoHelper alignment="top-right" margin={[80, 80]}>
-          <GizmoViewport axisColors={['#9d4b4b', '#2f7f4f', '#3b5b9d']} labelColor="white" />
+        
+        {/* Updated Gizmo Location */}
+        <GizmoHelper alignment="bottom-right" margin={gizmoMargin}>
+          <GizmoViewport 
+            axisColors={['#9d4b4b', '#2f7f4f', '#3b5b9d']} 
+            labelColor="white" 
+          />
         </GizmoHelper>
         
         <mesh 
