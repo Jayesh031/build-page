@@ -4,12 +4,12 @@ import { useGLTF, OrbitControls, Grid, Environment, ContactShadows, GizmoHelper,
 import { useDroneStore } from './store'; 
 import * as THREE from 'three';
 
-// --- FILE MAPPING ---
 const FILE_MAP = {
   'bottom_plate': '/bottom_plate.glb',
   'top_plate': '/top_plate.glb',
   'arm': '/arm.glb',
-  'motor': '/motor.glb',
+  'motor_cw': '/motor.glb', 
+  'motor_ccw': '/motor.glb', 
   'propellor_cw': '/propellor_cw.glb',
   'propellor_ccw': '/propellor_ccw.glb', 
   'fc': '/fc.glb',
@@ -19,14 +19,11 @@ const FILE_MAP = {
   'gps_module': '/gps_module.glb'
 };
 
-// --- PRELOADER ---
-// This prevents the "disappearing" bug by ensuring all assets are loaded before dragging starts.
 Object.values(FILE_MAP).forEach(url => useGLTF.preload(url));
 
-// --- 1. MODEL COMPONENT ---
 function Model({ type, isGhost, ...props }) {
   const gltf = useGLTF(FILE_MAP[type]);
-  const scene = useMemo(() => gltf.scene.clone(), [gltf.scene]);
+  const scene = useMemo(() => gltf.scene.clone(), [gltf.scene, type]);
 
   useMemo(() => {
     scene.traverse((child) => {
@@ -41,10 +38,14 @@ function Model({ type, isGhost, ...props }) {
         } else {
           child.castShadow = true;
           child.receiveShadow = true;
+          if (type === 'motor_ccw') {
+             child.material = child.material.clone();
+             child.material.color.set('#ffcccc'); 
+          }
         }
       }
     });
-  }, [scene, isGhost]);
+  }, [scene, isGhost, type]);
 
   const handlePartRightClick = (e) => {
     e.nativeEvent.preventDefault(); 
@@ -64,14 +65,12 @@ function Model({ type, isGhost, ...props }) {
     <group 
       position={props.position} 
       rotation={props.rotation}
-      scale={1} // LOCKED GLOBAL SCALE
+      scale={1} 
       onDoubleClick={handlePartDoubleClick}
       onContextMenu={handlePartRightClick}
       onClick={(e) => { if(!isGhost) { e.stopPropagation(); props.onSelect(); } }}
     >
       <primitive object={scene} />
-      
-      {/* Selection Ring */}
       {props.isActive && !isGhost && (
         <mesh position={[0, -5, 0]} rotation={[-Math.PI/2, 0, 0]}>
            <ringGeometry args={[8, 9, 32]} />
@@ -82,7 +81,6 @@ function Model({ type, isGhost, ...props }) {
   );
 }
 
-// --- 2. DRAG MANAGER ---
 function DragManager() {
   const { camera, gl } = useThree();
   const draggedPartType = useDroneStore((s) => s.draggedPartType);
@@ -133,18 +131,18 @@ function DragManager() {
   return null;
 }
 
-// --- MAIN SCENE ---
-export default function DroneScene() {
+export default function DroneScene({ isDark }) {
   const parts = useDroneStore((state) => state.parts);
   const activePartId = useDroneStore((state) => state.activePartId);
   const isCarrying = useDroneStore((state) => state.isCarrying);
+  const placementMode = useDroneStore((state) => state.placementMode);
   const selectPart = useDroneStore((state) => state.selectPart);
   const updatePartPosition = useDroneStore((state) => state.updatePartPosition);
   
   const handlePlaneMove = (e) => {
-    if (activePartId && isCarrying) {
+    if (activePartId && isCarrying && placementMode === 'free') {
       e.stopPropagation();
-      updatePartPosition(activePartId, e.point.x, e.point.z);
+      updatePartPosition(activePartId, e.point.x, undefined, e.point.z); 
     }
   };
 
@@ -158,23 +156,16 @@ export default function DroneScene() {
   return (
     <div className="w-full h-full">
       <Canvas shadows camera={{ position: [50, 50, 50], fov: 45 }}>
-        <color attach="background" args={['#f5f7fa']} />
+        {/* Force Light Background for visibility of dark parts */}
+        <color attach="background" args={['#f1f5f9']} />
+        
         <Environment preset="city" /> 
         <directionalLight position={[10, 20, 10]} intensity={1.5} castShadow shadow-mapSize={[1024, 1024]} />
         <ambientLight intensity={0.5} />
         
-        <Grid 
-          infiniteGrid 
-          fadeDistance={250} 
-          sectionColor="#cbd5e1" 
-          cellColor="#e2e8f0" 
-          cellSize={10} 
-          sectionSize={50} 
-        />
-        
+        <Grid infiniteGrid fadeDistance={250} sectionColor="#cbd5e1" cellColor="#e2e8f0" cellSize={10} sectionSize={50} />
         <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={200} blur={2} far={10} />
 
-        {/* Separated Suspense for DragManager prevents flickering */}
         <Suspense fallback={null}>
           {parts.map((part) => (
             <Model 
@@ -185,28 +176,28 @@ export default function DroneScene() {
               isActive={part.id === activePartId}
               isCarrying={part.id === activePartId && isCarrying}
               onSelect={() => selectPart(part.id)}
-              onPickup={() => { selectPart(part.id); useDroneStore.setState({ isCarrying: true }); }}
+              onPickup={() => { 
+                if(placementMode === 'free') {
+                    selectPart(part.id); 
+                    useDroneStore.setState({ isCarrying: true }); 
+                } else {
+                    selectPart(part.id); 
+                }
+              }}
             />
           ))}
-        </Suspense>
-
-        <Suspense fallback={null}>
-           <DragManager />
+          <DragManager />
         </Suspense>
         
-        {/* Full 360 Rotation enabled (removed min/maxPolarAngle) */}
         <OrbitControls makeDefault />
-
-        {/* BLENDER-STYLE AXIS WIDGET */}
         <GizmoHelper alignment="top-right" margin={[80, 80]}>
           <GizmoViewport axisColors={['#9d4b4b', '#2f7f4f', '#3b5b9d']} labelColor="white" />
         </GizmoHelper>
         
-        {/* INVISIBLE FLOOR PLANE */}
         <mesh 
             rotation={[-Math.PI / 2, 0, 0]} 
             position={[0, -0.01, 0]} 
-            scale={1000} // Increased scale to catch mouse events far away
+            scale={1000} 
             visible={false} 
             onPointerMove={handlePlaneMove}
             onContextMenu={handleBackgroundRightClick} 
