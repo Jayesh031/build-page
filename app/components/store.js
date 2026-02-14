@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 
-// --- CONSTANTS ---
 export const VARIANTS = {
   'battery': ['4S 1500mAh', '6S 1100mAh', '6S 1300mAh'],
   'motor_cw': ['1750KV', '1950KV', '2450KV', '2750KV'],
@@ -46,6 +45,24 @@ export const useDroneStore = create(
       isCarrying: false,
       draggedPartType: null,
       
+      // Viewport State
+      isGridVisible: true,
+      isWireframe: false,
+      toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
+      toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
+      
+      // Camera Control References
+      mainControlsRef: null,
+      setMainControlsRef: (ref) => set({ mainControlsRef: ref }),
+      
+      cameraActions: {
+        reset: () => {},
+        setTop: () => {},
+        setFront: () => {},
+        setSide: () => {},
+      },
+      setCameraActions: (actions) => set({ cameraActions: actions }),
+
       // Placement Mode
       placementMode: 'free',
       togglePlacementMode: () => set((state) => ({ 
@@ -66,12 +83,11 @@ export const useDroneStore = create(
         let appliedVariant = '-';
         const availableVariants = VARIANTS[partType];
         
-        // Auto-apply selected variant if it matches the dragged type
         if (availableVariants && availableVariants.length > 0) {
              if (configuredVariantData && configuredVariantData.type === partType && configuredVariantData.variant) {
                  appliedVariant = configuredVariantData.variant;
              } else {
-                 appliedVariant = availableVariants[0]; // Default
+                 appliedVariant = availableVariants[0]; 
              }
         }
 
@@ -83,6 +99,7 @@ export const useDroneStore = create(
             position: position, 
             rotation: [0, 0, 0], 
             isLocked: false,
+            isGhosted: false, // Individual X-Ray State
           }],
           activePartId: uniqueId,
           isCarrying: false,
@@ -121,6 +138,17 @@ export const useDroneStore = create(
         }));
       },
 
+      // Toggle Single Part X-Ray
+      togglePartGhost: () => {
+         const { activePartId } = get();
+         if (!activePartId) return;
+         set((state) => ({
+           parts: state.parts.map(p => 
+             p.id === activePartId ? { ...p, isGhosted: !p.isGhosted } : p
+           )
+         }));
+      },
+
       lockActivePart: () => {
         set((state) => ({
           parts: state.parts.map(p => 
@@ -132,7 +160,6 @@ export const useDroneStore = create(
         useDroneStore.temporal.getState().resume();
       },
 
-      // Delete Function
       deletePart: (id) => set((state) => ({
         parts: state.parts.filter(p => p.id !== id),
         activePartId: null,

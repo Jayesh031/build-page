@@ -1,6 +1,6 @@
 import React, { Suspense, useMemo, useRef, useEffect } from 'react';
 import { Canvas, useThree } from '@react-three/fiber';
-import { useGLTF, OrbitControls, Grid, Environment, ContactShadows, GizmoHelper, GizmoViewport } from '@react-three/drei';
+import { useGLTF, OrbitControls, Grid, Environment, ContactShadows } from '@react-three/drei';
 import { useDroneStore } from './store'; 
 import * as THREE from 'three';
 
@@ -21,31 +21,68 @@ const FILE_MAP = {
 
 Object.values(FILE_MAP).forEach(url => useGLTF.preload(url));
 
-function Model({ type, isGhost, ...props }) {
+function Model({ type, isGhost, isGhosted, ...props }) {
   const gltf = useGLTF(FILE_MAP[type]);
+  // 1. Create a FRESH clone of the scene whenever the 'type' changes
   const scene = useMemo(() => gltf.scene.clone(), [gltf.scene, type]);
+  
+  const isWireframe = useDroneStore((s) => s.isWireframe);
 
-  useMemo(() => {
+  // 2. Apply Material Properties whenever state changes
+  useEffect(() => {
     scene.traverse((child) => {
       if (child.isMesh) {
+        // IMPORTANT: Ensure we have a unique material clone to modify
+        if (!child.userData.originalMaterial) {
+           child.userData.originalMaterial = child.material.clone();
+        }
+        // Always start from a fresh clone of the original material to avoid "stuck" states
+        child.material = child.userData.originalMaterial.clone();
+
+        // --- STATE 1: DRAGGING GHOST (Blue Hologram) ---
         if (isGhost) {
-          child.material = child.material.clone();
           child.material.transparent = true;
           child.material.opacity = 0.5;
           child.material.color.set('#3b82f6'); 
+          child.material.wireframe = false;
           child.castShadow = false;
           child.receiveShadow = false;
-        } else {
+        } 
+        // --- STATE 2: SPECIFIC X-RAY (Selected Part) ---
+        else if (isGhosted) {
+          child.material.transparent = true;
+          child.material.opacity = 0.25; // Clear glass look
+          child.material.roughness = 0.1;
+          child.material.metalness = 0.9;
+          child.material.wireframe = false;
+          child.castShadow = false;
+          child.receiveShadow = false;
+          
+          // Optional: slight tint to show it's selected
+          child.material.emissive = new THREE.Color("#00ffff");
+          child.material.emissiveIntensity = 0.2;
+        }
+        // --- STATE 3: NORMAL ---
+        else {
+          // Reset to Standard
+          child.material.transparent = false;
+          child.material.opacity = 1.0;
+          child.material.wireframe = isWireframe;
           child.castShadow = true;
           child.receiveShadow = true;
-          if (type === 'motor_ccw') {
-             child.material = child.material.clone();
+          child.material.emissive = new THREE.Color("black");
+          child.material.emissiveIntensity = 0;
+
+          // Special case for CCW Motor color
+          if (type === 'motor_ccw' && !isWireframe) {
              child.material.color.set('#ffcccc'); 
           }
         }
+        
+        child.material.needsUpdate = true;
       }
     });
-  }, [scene, isGhost, type]);
+  }, [scene, isGhost, isGhosted, type, isWireframe]);
 
   const handlePartRightClick = (e) => {
     e.nativeEvent.preventDefault(); 
@@ -131,6 +168,54 @@ function DragManager() {
   return null;
 }
 
+// SAFE CAMERA MANAGER
+function CameraManager() {
+  const { camera, gl } = useThree();
+  const controlsRef = useRef(); 
+  const setCameraActions = useDroneStore((s) => s.setCameraActions);
+  const setMainControlsRef = useDroneStore((s) => s.setMainControlsRef);
+
+  useEffect(() => {
+    if (!controlsRef.current) return;
+
+    setMainControlsRef(controlsRef);
+    
+    setCameraActions({
+        reset: () => {
+            if (controlsRef.current) {
+                controlsRef.current.reset();
+                camera.position.set(50, 50, 50);
+                camera.lookAt(0,0,0);
+            }
+        },
+        setTop: () => {
+            camera.position.set(0, 100, 0);
+            camera.lookAt(0,0,0);
+        },
+        setFront: () => {
+            camera.position.set(0, 0, 100);
+            camera.lookAt(0,0,0);
+        },
+        setSide: () => {
+            camera.position.set(100, 0, 0);
+            camera.lookAt(0,0,0);
+        }
+    });
+
+    return () => {
+        setMainControlsRef(null);
+        setCameraActions({
+            reset: () => {},
+            setTop: () => {},
+            setFront: () => {},
+            setSide: () => {},
+        });
+    };
+  }, [camera, setCameraActions, setMainControlsRef]);
+
+  return <OrbitControls ref={controlsRef} args={[camera, gl.domElement]} makeDefault />;
+}
+
 export default function DroneScene({ isDark, isRightCollapsed }) {
   const parts = useDroneStore((state) => state.parts);
   const activePartId = useDroneStore((state) => state.activePartId);
@@ -138,7 +223,8 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
   const placementMode = useDroneStore((state) => state.placementMode);
   const selectPart = useDroneStore((state) => state.selectPart);
   const updatePartPosition = useDroneStore((state) => state.updatePartPosition);
-  
+  const isGridVisible = useDroneStore((state) => state.isGridVisible);
+
   const handlePlaneMove = (e) => {
     if (activePartId && isCarrying && placementMode === 'free') {
       e.stopPropagation();
@@ -153,29 +239,25 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
     }
   };
 
-  const gizmoMargin = isRightCollapsed ? [80, 80] : [360, 80];
-
   return (
     <div className="w-full h-full">
       <Canvas shadows camera={{ position: [50, 50, 50], fov: 45 }}>
-        {/* CHANGED: Light Gray for Dark Mode (#e2e8f0), Bright White for Light Mode (#ffffff) */}
         <color attach="background" args={[isDark ? '#e2e8f0' : '#ffffff']} />
         
-        {/* NEUTRAL LIGHTING STUDIO */}
         <Environment preset="studio" /> 
-        
-        {/* Strong neutral lights to prevent tinting */}
         <directionalLight position={[10, 20, 10]} intensity={2} color="white" castShadow shadow-mapSize={[1024, 1024]} />
         <ambientLight intensity={0.8} color="white" />
         
-        <Grid 
-          infiniteGrid 
-          fadeDistance={250} 
-          sectionColor={isDark ? "#94a3b8" : "#cbd5e1"} 
-          cellColor={isDark ? "#cbd5e1" : "#e2e8f0"} 
-          cellSize={10} 
-          sectionSize={50} 
-        />
+        {isGridVisible && (
+          <Grid 
+            infiniteGrid 
+            fadeDistance={250} 
+            sectionColor={isDark ? "#94a3b8" : "#cbd5e1"} 
+            cellColor={isDark ? "#cbd5e1" : "#e2e8f0"} 
+            cellSize={10} 
+            sectionSize={50} 
+          />
+        )}
         
         <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={200} blur={2} far={10} />
 
@@ -188,6 +270,8 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
               rotation={part.rotation}
               isActive={part.id === activePartId}
               isCarrying={part.id === activePartId && isCarrying}
+              // Pass the boolean correctly here
+              isGhosted={part.isGhosted}
               onSelect={() => selectPart(part.id)}
               onPickup={() => { 
                 if(placementMode === 'free') {
@@ -202,10 +286,7 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
           <DragManager />
         </Suspense>
         
-        <OrbitControls makeDefault />
-        <GizmoHelper alignment="bottom-right" margin={gizmoMargin}>
-          <GizmoViewport axisColors={['#9d4b4b', '#2f7f4f', '#3b5b9d']} labelColor="white" />
-        </GizmoHelper>
+        <CameraManager />
         
         <mesh 
             rotation={[-Math.PI / 2, 0, 0]} 
