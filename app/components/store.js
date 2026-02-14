@@ -1,12 +1,12 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 
-// --- RICH DATA VARIANTS (Indian Rupees ₹) ---
+// --- RICH DATA VARIANTS ---
 export const VARIANTS = {
   'battery': [
     { label: '4S 1500mAh', weight: 175, price: 1850, voltage: 16.8, type: 'battery' },
     { label: '6S 1100mAh', weight: 190, price: 2450, voltage: 25.2, type: 'battery' },
-    { label: '6S 1300mAh', weight: 210, price: 2899, voltage: 25.2, type: 'battery' } // High Voltage
+    { label: '6S 1300mAh', weight: 210, price: 2899, voltage: 25.2, type: 'battery' }
   ],
   'motor_cw': [
     { label: '1750KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1300 },
@@ -36,8 +36,8 @@ export const VARIANTS = {
     { label: 'H7 Extreme', weight: 10, price: 7500 }
   ],
   'esc': [
-    { label: '45A BlHeli_S', weight: 12, price: 3200, maxVoltage: 16.8 }, // 4S Limit
-    { label: '55A BlHeli_32', weight: 14, price: 5500, maxVoltage: 25.2 }, // 6S Limit
+    { label: '45A BlHeli_S', weight: 12, price: 3200, maxVoltage: 16.8 }, 
+    { label: '55A BlHeli_32', weight: 14, price: 5500, maxVoltage: 25.2 }, 
     { label: '60A AM32', weight: 15, price: 6200, maxVoltage: 25.2 }
   ],
   'receiver': [
@@ -50,7 +50,20 @@ export const VARIANTS = {
     { label: 'M10 GPS', weight: 10, price: 1950 },
     { label: 'Beitian BN-880', weight: 18, price: 1600 }
   ],
-  'bottom_plate': [{ label: 'Standard Carbon', weight: 45, price: 1800 }], 
+  'bottom_plate': [
+    { 
+      label: 'Standard Carbon', 
+      weight: 45, 
+      price: 1800,
+      sockets: {
+        'motor_cw': [[15, 1, 15], [-15, 1, -15]], 
+        'motor_ccw': [[-15, 1, 15], [15, 1, -15]], 
+        'fc': [[0, 2, 0]], 
+        'esc': [[0, 1, 0]], 
+        'battery': [[0, 3, 0]] 
+      }
+    }
+  ], 
   'top_plate': [{ label: 'Standard Carbon', weight: 15, price: 800 }],
   'arm': [{ label: '5-inch Arm', weight: 12, price: 450 }]
 };
@@ -87,10 +100,15 @@ export const useDroneStore = create(
       // Viewport State
       isGridVisible: true,
       isWireframe: false,
+      isExploded: false,
+      isPanMode: false, // NEW: Pan Mode State
+      
       toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
       toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
+      toggleExploded: () => set((state) => ({ isExploded: !state.isExploded })),
+      togglePanMode: () => set((state) => ({ isPanMode: !state.isPanMode })), // NEW Toggle
       
-      // Camera Control References
+      // Camera Control
       mainControlsRef: null,
       setMainControlsRef: (ref) => set({ mainControlsRef: ref }),
       
@@ -102,14 +120,13 @@ export const useDroneStore = create(
       },
       setCameraActions: (actions) => set({ cameraActions: actions }),
 
-      // Placement Mode
+      // Placement & Config
       placementMode: 'free',
       togglePlacementMode: () => set((state) => ({ 
         placementMode: state.placementMode === 'free' ? 'precision' : 'free',
         isCarrying: false 
       })),
 
-      // Configuration State
       configuredVariantData: null, 
       setConfiguredVariantData: (data) => set({ configuredVariantData: data }),
 
@@ -152,13 +169,11 @@ export const useDroneStore = create(
         }
       },
       
-      // --- NEW ACTION: Update Existing Part Variant ---
       updatePartVariant: (id, variant) => set((state) => ({
         parts: state.parts.map(p => 
           p.id === id ? { ...p, variant: variant } : p
         )
       })),
-      // ------------------------------------------------
 
       updatePartPosition: (id, x, y, z) => set((state) => {
         const part = state.parts.find(p => p.id === id);

@@ -1,7 +1,7 @@
-import React, { Suspense, useMemo, useRef, useEffect } from 'react';
-import { Canvas, useThree } from '@react-three/fiber';
+import React, { Suspense, useMemo, useRef, useEffect, useState } from 'react';
+import { Canvas, useThree, useFrame } from '@react-three/fiber';
 import { useGLTF, OrbitControls, Grid, Environment, ContactShadows } from '@react-three/drei';
-import { useDroneStore } from './store'; 
+import { useDroneStore, VARIANTS } from './store'; 
 import * as THREE from 'three';
 
 const FILE_MAP = {
@@ -21,25 +21,46 @@ const FILE_MAP = {
 
 Object.values(FILE_MAP).forEach(url => useGLTF.preload(url));
 
-function Model({ type, isGhost, isGhosted, ...props }) {
+function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...props }) {
   const gltf = useGLTF(FILE_MAP[type]);
-  // 1. Create a FRESH clone of the scene whenever the 'type' changes
   const scene = useMemo(() => gltf.scene.clone(), [gltf.scene, type]);
-  
   const isWireframe = useDroneStore((s) => s.isWireframe);
+  const isExploded = useDroneStore((s) => s.isExploded);
+  
+  const groupRef = useRef();
 
-  // 2. Apply Material Properties whenever state changes
+  // --- EXPLODED VIEW LOGIC ---
+  useFrame((state, delta) => {
+    if (!groupRef.current) return;
+
+    let targetY = position[1]; // Default: Real position
+
+    if (isExploded && !isGhost) {
+       let offset = 0;
+       if (type === 'battery') offset = 40;
+       if (type === 'top_plate') offset = 30;
+       if (type.includes('propellor')) offset = 20;
+       if (type === 'fc') offset = 15;
+       if (type === 'esc') offset = 8;
+       if (type.includes('motor')) offset = 5;
+       
+       targetY += offset;
+    }
+
+    groupRef.current.position.x = position[0];
+    groupRef.current.position.z = position[2];
+    groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, targetY, delta * 10);
+    groupRef.current.rotation.set(...rotation);
+  });
+
   useEffect(() => {
     scene.traverse((child) => {
       if (child.isMesh) {
-        // IMPORTANT: Ensure we have a unique material clone to modify
         if (!child.userData.originalMaterial) {
            child.userData.originalMaterial = child.material.clone();
         }
-        // Always start from a fresh clone of the original material to avoid "stuck" states
         child.material = child.userData.originalMaterial.clone();
 
-        // --- STATE 1: DRAGGING GHOST (Blue Hologram) ---
         if (isGhost) {
           child.material.transparent = true;
           child.material.opacity = 0.5;
@@ -48,23 +69,18 @@ function Model({ type, isGhost, isGhosted, ...props }) {
           child.castShadow = false;
           child.receiveShadow = false;
         } 
-        // --- STATE 2: SPECIFIC X-RAY (Selected Part) ---
         else if (isGhosted) {
           child.material.transparent = true;
-          child.material.opacity = 0.25; // Clear glass look
+          child.material.opacity = 0.25; 
           child.material.roughness = 0.1;
           child.material.metalness = 0.9;
           child.material.wireframe = false;
           child.castShadow = false;
           child.receiveShadow = false;
-          
-          // Optional: slight tint to show it's selected
           child.material.emissive = new THREE.Color("#00ffff");
           child.material.emissiveIntensity = 0.2;
         }
-        // --- STATE 3: NORMAL ---
         else {
-          // Reset to Standard
           child.material.transparent = false;
           child.material.opacity = 1.0;
           child.material.wireframe = isWireframe;
@@ -73,12 +89,10 @@ function Model({ type, isGhost, isGhosted, ...props }) {
           child.material.emissive = new THREE.Color("black");
           child.material.emissiveIntensity = 0;
 
-          // Special case for CCW Motor color
           if (type === 'motor_ccw' && !isWireframe) {
              child.material.color.set('#ffcccc'); 
           }
         }
-        
         child.material.needsUpdate = true;
       }
     });
@@ -100,15 +114,14 @@ function Model({ type, isGhost, isGhosted, ...props }) {
 
   return (
     <group 
-      position={props.position} 
-      rotation={props.rotation}
+      ref={groupRef}
       scale={1} 
       onDoubleClick={handlePartDoubleClick}
       onContextMenu={handlePartRightClick}
       onClick={(e) => { if(!isGhost) { e.stopPropagation(); props.onSelect(); } }}
     >
       <primitive object={scene} />
-      {props.isActive && !isGhost && (
+      {isActive && !isGhost && (
         <mesh position={[0, -5, 0]} rotation={[-Math.PI/2, 0, 0]}>
            <ringGeometry args={[8, 9, 32]} />
            <meshBasicMaterial color={props.isCarrying ? "#3b82f6" : "#ef4444"} side={THREE.DoubleSide} />
@@ -118,14 +131,31 @@ function Model({ type, isGhost, isGhosted, ...props }) {
   );
 }
 
+// --- INTELLIGENT SNAP MANAGER ---
 function DragManager() {
   const { camera, gl } = useThree();
   const draggedPartType = useDroneStore((s) => s.draggedPartType);
   const spawnPart = useDroneStore((s) => s.spawnPart);
+  const parts = useDroneStore((s) => s.parts);
   
   const ghostRef = useRef();
   const raycaster = useMemo(() => new THREE.Raycaster(), []);
   const plane = useMemo(() => new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), []);
+  const [snapPosition, setSnapPosition] = useState(null);
+
+  const frame = useMemo(() => parts.find(p => p.type === 'bottom_plate'), [parts]);
+  const frameSockets = useMemo(() => {
+     if (!frame) return null;
+     const variantData = VARIANTS['bottom_plate'].find(v => v.label === frame.variant) || VARIANTS['bottom_plate'][0];
+     return variantData.sockets || null;
+  }, [frame]);
+
+  useFrame(() => {
+    if (!draggedPartType || !ghostRef.current) return;
+    if (snapPosition && ghostRef.current) {
+        ghostRef.current.position.set(...snapPosition);
+    }
+  });
 
   useEffect(() => {
     const canvas = gl.domElement;
@@ -133,14 +163,42 @@ function DragManager() {
     const handleDragOver = (e) => {
       e.preventDefault(); 
       if (!draggedPartType || !ghostRef.current) return;
+      
       const rect = canvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.setFromCamera({ x, y }, camera);
       const target = new THREE.Vector3();
       raycaster.ray.intersectPlane(plane, target);
+      
       if (target) {
-        ghostRef.current.position.copy(target);
+        let bestSnap = null;
+        let minDist = 5; 
+
+        if (frame && frameSockets && frameSockets[draggedPartType]) {
+            frameSockets[draggedPartType].forEach(offset => {
+                const worldSnap = new THREE.Vector3(
+                    frame.position[0] + offset[0], 
+                    frame.position[1] + offset[1], 
+                    frame.position[2] + offset[2]
+                );
+                const dist = worldSnap.distanceTo(target);
+                if (dist < minDist) {
+                    minDist = dist;
+                    bestSnap = worldSnap.toArray();
+                }
+            });
+        }
+
+        if (bestSnap) {
+            setSnapPosition(bestSnap);
+            ghostRef.current.position.set(...bestSnap);
+            ghostRef.current.scale.set(1.2, 1.2, 1.2);
+        } else {
+            setSnapPosition(null);
+            ghostRef.current.position.copy(target);
+            ghostRef.current.scale.set(1, 1, 1);
+        }
         ghostRef.current.visible = true;
       }
     };
@@ -148,38 +206,57 @@ function DragManager() {
     const handleDrop = (e) => {
       e.preventDefault();
       if (draggedPartType && ghostRef.current?.visible) {
-        spawnPart(draggedPartType, ghostRef.current.position.toArray());
+        const finalPos = snapPosition || ghostRef.current.position.toArray();
+        spawnPart(draggedPartType, finalPos);
       }
       if (ghostRef.current) ghostRef.current.visible = false;
+      setSnapPosition(null);
     };
 
     canvas.addEventListener('dragover', handleDragOver);
     canvas.addEventListener('drop', handleDrop);
     return () => { canvas.removeEventListener('dragover', handleDragOver); canvas.removeEventListener('drop', handleDrop); };
-  }, [camera, gl.domElement, draggedPartType, plane, raycaster, spawnPart]);
+  }, [camera, gl.domElement, draggedPartType, plane, raycaster, spawnPart, frame, frameSockets, snapPosition]);
 
   if (draggedPartType) {
     return (
       <group ref={ghostRef} visible={false}>
         <Model type={draggedPartType} isGhost={true} position={[0,0,0]} rotation={[0,0,0]} />
+        {snapPosition && (
+            <mesh position={[0, 0, 0]}>
+                <sphereGeometry args={[1.5, 16, 16]} />
+                <meshBasicMaterial color="#4ade80" transparent opacity={0.6} />
+            </mesh>
+        )}
       </group>
     );
   }
   return null;
 }
 
-// SAFE CAMERA MANAGER
+// --- UPDATED CAMERA MANAGER WITH PAN SUPPORT ---
 function CameraManager() {
   const { camera, gl } = useThree();
   const controlsRef = useRef(); 
   const setCameraActions = useDroneStore((s) => s.setCameraActions);
   const setMainControlsRef = useDroneStore((s) => s.setMainControlsRef);
+  const isPanMode = useDroneStore((s) => s.isPanMode);
 
   useEffect(() => {
     if (!controlsRef.current) return;
 
     setMainControlsRef(controlsRef);
     
+    // --- MOUSE BUTTON MAPPING ---
+    if (isPanMode) {
+        controlsRef.current.mouseButtons.LEFT = THREE.MOUSE.PAN;
+        controlsRef.current.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+    } else {
+        controlsRef.current.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
+        controlsRef.current.mouseButtons.RIGHT = THREE.MOUSE.PAN;
+    }
+    // ----------------------------
+
     setCameraActions({
         reset: () => {
             if (controlsRef.current) {
@@ -211,7 +288,7 @@ function CameraManager() {
             setSide: () => {},
         });
     };
-  }, [camera, setCameraActions, setMainControlsRef]);
+  }, [camera, setCameraActions, setMainControlsRef, isPanMode]); // Re-run when mode changes
 
   return <OrbitControls ref={controlsRef} args={[camera, gl.domElement]} makeDefault />;
 }
@@ -270,7 +347,6 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
               rotation={part.rotation}
               isActive={part.id === activePartId}
               isCarrying={part.id === activePartId && isCarrying}
-              // Pass the boolean correctly here
               isGhosted={part.isGhosted}
               onSelect={() => selectPart(part.id)}
               onPickup={() => { 

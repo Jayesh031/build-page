@@ -6,7 +6,7 @@ import {
   ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, 
   Move, Sliders, Minus, Plus, ChevronDown, Check, X as CloseIcon,
   Maximize, Eye, Grid as GridIcon, Cube, LayoutTemplate, EyeOff, Trash2,
-  AlertTriangle, Scale, IndianRupee, Activity, Gauge
+  AlertTriangle, Scale, IndianRupee, Activity, Gauge, Hand
 } from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { GizmoHelper, GizmoViewport } from '@react-three/drei';
@@ -234,8 +234,12 @@ export default function BuilderPage() {
   // Viewport & Ghost Store
   const isGridVisible = useDroneStore((s) => s.isGridVisible);
   const isWireframe = useDroneStore((s) => s.isWireframe);
+  const isExploded = useDroneStore((s) => s.isExploded);
+  const isPanMode = useDroneStore((s) => s.isPanMode); // NEW
   const toggleGrid = useDroneStore((s) => s.toggleGrid);
   const toggleWireframe = useDroneStore((s) => s.toggleWireframe);
+  const toggleExploded = useDroneStore((s) => s.toggleExploded);
+  const togglePanMode = useDroneStore((s) => s.togglePanMode); // NEW
   const cameraActions = useDroneStore((s) => s.cameraActions);
   const togglePartGhost = useDroneStore((s) => s.togglePartGhost);
 
@@ -280,20 +284,17 @@ export default function BuilderPage() {
   const getFriendlyName = (type) => INVENTORY.frames.find(i => i.type === type)?.label || INVENTORY.propulsion.find(i => i.type === type)?.label || INVENTORY.electronics.find(i => i.type === type)?.label || type;
   const handleInventoryClick = (type) => { setSelectedPartType(type); setSelectedVariant(''); setConfiguredVariantData({ type, variant: null }); };
 
-  // --- FIX: SAFE GETTERS ---
   const getCurrentValue = () => {
     if(!activePart) return 0;
     let val = 0;
     if(activeAxis === 'X') val = activePart.position[0];
     if(activeAxis === 'Y') val = activePart.position[1];
     if(activeAxis === 'Z') val = activePart.position[2];
-    // Safety check: Return 0 if NaN to prevent React input crash
     return isNaN(val) ? 0 : val;
   };
 
   const handleValueChange = (val) => {
     if(!activePart) return;
-    // Safety check: Prevent NaN from being saved to store
     const safeVal = isNaN(val) ? 0 : val;
     
     const newPos = [...activePart.position];
@@ -302,7 +303,6 @@ export default function BuilderPage() {
     if(activeAxis === 'Z') newPos[2] = safeVal;
     updatePartPosition(activePart.id, newPos[0], newPos[1], newPos[2]);
   };
-  // -------------------------
 
   const containerClass = isDark 
     ? "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0f172a] via-[#090e1a] to-black text-slate-100" 
@@ -388,6 +388,9 @@ export default function BuilderPage() {
                      <ViewBtn onClick={cameraActions.setFront} icon={<Box size={14}/>} tooltip="Front View" />
                      <ViewBtn onClick={cameraActions.setSide} icon={<Box size={14} className="rotate-90"/>} tooltip="Side View" />
                      <div className="h-2 col-span-3"></div> 
+                     
+                     <ViewBtn onClick={togglePanMode} icon={<Hand size={14}/>} active={isPanMode} tooltip="Pan Mode (Hand Tool)" />
+                     <ViewBtn onClick={toggleExploded} icon={<Layers size={14}/>} active={isExploded} tooltip="Exploded View" />
                      <ViewBtn onClick={toggleWireframe} icon={<Eye size={14}/>} active={isWireframe} tooltip="Global X-Ray" />
                      <ViewBtn onClick={toggleGrid} icon={<GridIcon size={14}/>} active={isGridVisible} tooltip="Toggle Grid" />
                      <ViewBtn onClick={cameraActions.reset} icon={<Maximize size={14}/>} tooltip="Reset View" />
