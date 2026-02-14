@@ -11,7 +11,7 @@ export const VARIANTS = {
   'motor_cw': [
     { label: '1750KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1300 },
     { label: '1950KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1400 },
-    { label: '2450KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1100 },
+    { label: '2450KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1100 }, 
     { label: '2750KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1200 }
   ],
   'motor_ccw': [
@@ -21,24 +21,28 @@ export const VARIANTS = {
     { label: '2750KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1200 }
   ],
   'propellor_cw': [
-    { label: '5040 Tri-Blade', weight: 4, price: 150 },
-    { label: '5045 Bullnose', weight: 5, price: 150 },
-    { label: '5149 Freestyle', weight: 4.5, price: 249 }
+    { label: '5040 Tri-Blade', weight: 4, price: 150, size: 5 }, 
+    { label: '5045 Bullnose', weight: 5, price: 150, size: 5 },
+    { label: '5149 Freestyle', weight: 4.5, price: 249, size: 5 },
+    { label: '7040 Long Range', weight: 6, price: 299, size: 7 }
   ],
   'propellor_ccw': [
-    { label: '5040 Tri-Blade', weight: 4, price: 150 },
-    { label: '5045 Bullnose', weight: 5, price: 150 },
-    { label: '5149 Freestyle', weight: 4.5, price: 249 }
+    { label: '5040 Tri-Blade', weight: 4, price: 150, size: 5 },
+    { label: '5045 Bullnose', weight: 5, price: 150, size: 5 },
+    { label: '5149 Freestyle', weight: 4.5, price: 249, size: 5 },
+    { label: '7040 Long Range', weight: 6, price: 299, size: 7 }
   ],
   'fc': [
-    { label: 'F405 Analog', weight: 8, price: 3500 },
-    { label: 'F722 HD', weight: 9, price: 4800 },
-    { label: 'H7 Extreme', weight: 10, price: 7500 }
+    { label: 'F405 Analog', weight: 8, price: 3500, mounting: '30x30' },
+    { label: 'F722 HD', weight: 9, price: 4800, mounting: '30x30' },
+    { label: 'H7 Extreme', weight: 10, price: 7500, mounting: '30x30' },
+    { label: 'F411 Mini', weight: 5, price: 2500, mounting: '20x20' }
   ],
   'esc': [
-    { label: '45A BlHeli_S', weight: 12, price: 3200, maxVoltage: 16.8 }, 
-    { label: '55A BlHeli_32', weight: 14, price: 5500, maxVoltage: 25.2 }, 
-    { label: '60A AM32', weight: 15, price: 6200, maxVoltage: 25.2 }
+    { label: '45A BlHeli_S', weight: 12, price: 3200, maxVoltage: 16.8, mounting: '30x30' }, 
+    { label: '55A BlHeli_32', weight: 14, price: 5500, maxVoltage: 25.2, mounting: '30x30' }, 
+    { label: '60A AM32', weight: 15, price: 6200, maxVoltage: 25.2, mounting: '30x30' },
+    { label: '35A Mini', weight: 8, price: 3000, maxVoltage: 16.8, mounting: '20x20' } 
   ],
   'receiver': [
     { label: 'ELRS 2.4G', weight: 1, price: 1200 },
@@ -55,6 +59,8 @@ export const VARIANTS = {
       label: 'Standard Carbon', 
       weight: 45, 
       price: 1800,
+      maxProp: 5, 
+      mounting: '30x30', 
       sockets: {
         'motor_cw': [[15, 1, 15], [-15, 1, -15]], 
         'motor_ccw': [[-15, 1, 15], [15, 1, -15]], 
@@ -62,7 +68,24 @@ export const VARIANTS = {
         'esc': [[0, 1, 0]], 
         'battery': [[0, 3, 0]] 
       }
+    },
+    // --- HEXA FRAME SUPPORT (Ready for future) ---
+    /*
+    { 
+      label: 'Hexa Heavy Lift', 
+      weight: 85, 
+      price: 4500,
+      maxProp: 7, 
+      mounting: '30x30',
+      sockets: {
+        'motor_cw': [[15, 1, 15], [-15, 1, -15], [20, 1, 0]], 
+        'motor_ccw': [[-15, 1, 15], [15, 1, -15], [-20, 1, 0]],
+        'fc': [[0, 2, 0]], 
+        'esc': [[0, 1, 0]], 
+        'battery': [[0, 3, 0]] 
+      }
     }
+    */
   ], 
   'top_plate': [{ label: 'Standard Carbon', weight: 15, price: 800 }],
   'arm': [{ label: '5-inch Arm', weight: 12, price: 450 }]
@@ -97,18 +120,20 @@ export const useDroneStore = create(
       isCarrying: false,
       draggedPartType: null,
       
-      // Viewport State
       isGridVisible: true,
       isWireframe: false,
       isExploded: false,
-      isPanMode: false, // NEW: Pan Mode State
+      isPanMode: false,
+      isArmed: false,
+      showCoG: false,
       
       toggleGrid: () => set((state) => ({ isGridVisible: !state.isGridVisible })),
       toggleWireframe: () => set((state) => ({ isWireframe: !state.isWireframe })),
       toggleExploded: () => set((state) => ({ isExploded: !state.isExploded })),
-      togglePanMode: () => set((state) => ({ isPanMode: !state.isPanMode })), // NEW Toggle
+      togglePanMode: () => set((state) => ({ isPanMode: !state.isPanMode })),
+      toggleArmed: () => set((state) => ({ isArmed: !state.isArmed })),
+      toggleCoG: () => set((state) => ({ showCoG: !state.showCoG })),
       
-      // Camera Control
       mainControlsRef: null,
       setMainControlsRef: (ref) => set({ mainControlsRef: ref }),
       
@@ -120,7 +145,6 @@ export const useDroneStore = create(
       },
       setCameraActions: (actions) => set({ cameraActions: actions }),
 
-      // Placement & Config
       placementMode: 'free',
       togglePlacementMode: () => set((state) => ({ 
         placementMode: state.placementMode === 'free' ? 'precision' : 'free',
@@ -147,14 +171,25 @@ export const useDroneStore = create(
              }
         }
 
+        // --- NEW: FRAME LOCKING LOGIC ---
+        // If it's a bottom plate, FORCE it to 0,0,0 and LOCK it.
+        let finalPosition = position;
+        let finalLocked = false;
+
+        if (partType.includes('bottom_plate')) {
+            finalPosition = [0, 0, 0];
+            finalLocked = true;
+        }
+        // --------------------------------
+
         set((state) => ({
           parts: [...state.parts, {
             id: uniqueId,
             type: partType,
             variant: appliedVariant,
-            position: position, 
+            position: finalPosition, 
             rotation: [0, 0, 0], 
-            isLocked: false,
+            isLocked: finalLocked, // Apply lock status
             isGhosted: false, 
           }],
           activePartId: uniqueId,
@@ -164,6 +199,7 @@ export const useDroneStore = create(
 
       selectPart: (id) => {
         const part = get().parts.find(p => p.id === id);
+        // Only select if not carrying, OR if it's the locked frame (allow selection but not move)
         if (part && !get().isCarrying) {
           set({ activePartId: id });
         }
@@ -178,6 +214,11 @@ export const useDroneStore = create(
       updatePartPosition: (id, x, y, z) => set((state) => {
         const part = state.parts.find(p => p.id === id);
         if(!part) return {};
+        
+        // --- NEW: PREVENT FRAME MOVEMENT ---
+        if (part.type.includes('bottom_plate')) return {}; 
+        // -----------------------------------
+
         const newX = x !== undefined ? x : part.position[0];
         const newY = y !== undefined ? y : part.position[1];
         const newZ = z !== undefined ? z : part.position[2];
@@ -193,6 +234,11 @@ export const useDroneStore = create(
         const { activePartId, parts } = get();
         if (!activePartId) return;
         const part = parts.find(p => p.id === activePartId);
+        
+        // --- NEW: PREVENT FRAME ROTATION ---
+        if (part.type.includes('bottom_plate')) return;
+        // -----------------------------------
+
         set((state) => ({
           parts: state.parts.map(p => 
             p.id === activePartId ? { ...p, rotation: [0, part.rotation[1] + (Math.PI / 4), 0] } : p

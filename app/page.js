@@ -6,7 +6,7 @@ import {
   ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, 
   Move, Sliders, Minus, Plus, ChevronDown, Check, X as CloseIcon,
   Maximize, Eye, Grid as GridIcon, Cube, LayoutTemplate, EyeOff, Trash2,
-  AlertTriangle, Scale, IndianRupee, Activity, Gauge, Hand
+  AlertTriangle, Scale, IndianRupee, Activity, Gauge, Hand, Crosshair, Play
 } from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { GizmoHelper, GizmoViewport } from '@react-three/drei';
@@ -23,6 +23,139 @@ const GlobalStyles = () => (
     input[type=number] { -moz-appearance: textfield; }
   `}</style>
 );
+
+const FlightStatusBar = ({ isDark }) => {
+  const parts = useDroneStore((s) => s.parts);
+  const isArmed = useDroneStore((s) => s.isArmed); 
+  const toggleArmed = useDroneStore((s) => s.toggleArmed); 
+
+  const stats = useMemo(() => {
+    let totalWeight = 0;
+    let totalPrice = 0;
+    let totalThrust = 0;
+    
+    // Safety Variables
+    let batteryVoltage = 0;
+    let maxEscVoltage = 999;
+    let frameMaxProp = 999;
+    let frameMounting = null;
+    let warnings = [];
+
+    parts.forEach(p => {
+      const variantList = VARIANTS[p.type];
+      const data = variantList?.find(v => v.label === p.variant);
+      
+      if (data) {
+        totalWeight += data.weight || 0;
+        totalPrice += data.price || 0;
+        
+        // Harvest Data for Checks
+        if (p.type === 'battery') batteryVoltage = data.voltage || 0;
+        if (p.type === 'esc') maxEscVoltage = Math.min(maxEscVoltage, data.maxVoltage || 999);
+        if (p.type.includes('motor')) totalThrust += (data.thrust || 0);
+        
+        if (p.type === 'bottom_plate') {
+            frameMaxProp = data.maxProp || 999;
+            frameMounting = data.mounting || null;
+        }
+      }
+    });
+
+    // --- CHECK 1: VOLTAGE ---
+    if (batteryVoltage > maxEscVoltage) {
+      warnings.push("OVER VOLTAGE");
+    }
+
+    // --- CHECK 2: PROP SIZE ---
+    parts.forEach(p => {
+        if(p.type.includes('propellor')) {
+            const data = VARIANTS[p.type]?.find(v => v.label === p.variant);
+            if (data && data.size > frameMaxProp) {
+                if(!warnings.includes("PROP TOO BIG")) warnings.push("PROP TOO BIG");
+            }
+        }
+    });
+
+    // --- CHECK 3: MOUNTING PATTERN ---
+    if (frameMounting) {
+        parts.forEach(p => {
+            if(p.type === 'fc' || p.type === 'esc') {
+                const data = VARIANTS[p.type]?.find(v => v.label === p.variant);
+                if (data && data.mounting && data.mounting !== frameMounting) {
+                     if(!warnings.includes("MOUNT MISMATCH")) warnings.push("MOUNT MISMATCH");
+                }
+            }
+        });
+    }
+    
+    const twr = totalWeight > 0 ? (totalThrust / totalWeight).toFixed(1) : 0;
+
+    return { totalWeight, totalPrice, twr, warnings };
+  }, [parts]);
+
+  return (
+    <div className={`pointer-events-auto absolute top-24 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-4 px-6 py-3 rounded-full border backdrop-blur-xl shadow-2xl transition-all
+      ${isDark ? "bg-[#0f172a]/80 border-cyan-500/30 text-slate-200" : "bg-white/90 border-slate-200 shadow-slate-200/50 text-slate-700"}`}>
+      
+      {/* ARM BUTTON */}
+      <button onClick={toggleArmed} className={`flex items-center gap-2 px-3 py-1.5 rounded-full mr-4 border transition-all ${isArmed ? "bg-red-500/20 border-red-500 text-red-500 animate-pulse" : (isDark ? "bg-slate-800 border-slate-600 text-slate-400 hover:text-white" : "bg-slate-100 border-slate-300 text-slate-500 hover:text-slate-800")}`}>
+          <Play size={14} fill={isArmed ? "currentColor" : "none"} />
+          <span className="text-[10px] font-bold tracking-wider">{isArmed ? "ARMED" : "TEST"}</span>
+      </button>
+
+      <div className={`pr-4 border-r ${isDark ? "border-cyan-500/20" : "border-slate-300"}`}>
+        <Activity size={18} className={isDark ? "text-cyan-400" : "text-blue-600"} />
+      </div>
+
+      <div className="flex items-center gap-6">
+         {/* Weight */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">WEIGHT</span>
+            <div className="font-mono text-sm font-bold flex items-center gap-1">
+               <Scale size={12} className={isDark ? "text-cyan-500" : "text-blue-500"}/>
+               {stats.totalWeight}g
+            </div>
+         </div>
+
+         {/* Price (INR) */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">COST</span>
+            <div className="font-mono text-sm font-bold flex items-center gap-1">
+               <IndianRupee size={12} className={isDark ? "text-emerald-400" : "text-green-600"}/>
+               {stats.totalPrice.toLocaleString('en-IN')}
+            </div>
+         </div>
+
+         {/* TWR / Amps */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">{isArmed ? "AMPS" : "TWR"}</span>
+            <div className={`font-mono text-sm font-bold flex items-center gap-1 ${stats.twr > 4 ? "text-emerald-500" : (stats.twr > 0 ? "text-amber-500" : "")}`}>
+               <Gauge size={12} />
+               {isArmed ? (Math.random() * 5 + 2).toFixed(1) + "A" : (stats.twr > 0 ? `${stats.twr}:1` : "-")}
+            </div>
+         </div>
+      </div>
+
+      {/* Dynamic Warning Labels (Loop through warnings) */}
+      <AnimatePresence>
+        {stats.warnings.map((msg, i) => (
+          <motion.div 
+            key={i}
+            initial={{ opacity: 0, width: 0, scale: 0.8 }} 
+            animate={{ opacity: 1, width: 'auto', scale: 1 }} 
+            exit={{ opacity: 0, width: 0, scale: 0.8 }}
+            className="flex items-center gap-2 pl-4 border-l border-red-500/30 overflow-hidden"
+          >
+             <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
+                <AlertTriangle size={16} className="text-red-500" />
+             </div>
+             <span className="text-[10px] font-bold text-red-400 whitespace-nowrap">{msg}</span>
+          </motion.div>
+        ))}
+      </AnimatePresence>
+    </div>
+  );
+};
 
 const NavbarBackdrop = ({ isDark }) => {
   if (!isDark) return null;
@@ -116,99 +249,6 @@ const SidebarGizmo = ({ isDark }) => {
   );
 };
 
-// --- FLIGHT STATUS BAR ---
-const FlightStatusBar = ({ isDark }) => {
-  const parts = useDroneStore((s) => s.parts);
-  
-  const stats = useMemo(() => {
-    let totalWeight = 0;
-    let totalPrice = 0;
-    let totalThrust = 0;
-    let voltage = 0;
-    let maxEscVoltage = 999;
-    let warnings = [];
-
-    parts.forEach(p => {
-      const variantList = VARIANTS[p.type];
-      const data = variantList?.find(v => v.label === p.variant);
-      
-      if (data) {
-        totalWeight += data.weight || 0;
-        totalPrice += data.price || 0;
-        
-        if (p.type === 'battery') voltage = data.voltage || 0;
-        if (p.type === 'esc') maxEscVoltage = Math.min(maxEscVoltage, data.maxVoltage || 999);
-        if (p.type.includes('motor')) totalThrust += (data.thrust || 0);
-      }
-    });
-
-    if (voltage > maxEscVoltage) {
-      warnings.push("VOLTAGE WARNING");
-    }
-    
-    // TWR Calculation
-    const twr = totalWeight > 0 ? (totalThrust / totalWeight).toFixed(1) : 0;
-
-    return { totalWeight, totalPrice, twr, warnings };
-  }, [parts]);
-
-  return (
-    <div className={`pointer-events-auto absolute top-24 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-4 px-6 py-3 rounded-full border backdrop-blur-xl shadow-2xl transition-all
-      ${isDark ? "bg-[#0f172a]/80 border-cyan-500/30 text-slate-200" : "bg-white/90 border-slate-200 shadow-slate-200/50 text-slate-700"}`}>
-      
-      <div className={`pr-4 border-r ${isDark ? "border-cyan-500/20" : "border-slate-300"}`}>
-        <Activity size={18} className={isDark ? "text-cyan-400" : "text-blue-600"} />
-      </div>
-
-      <div className="flex items-center gap-6">
-         {/* Weight */}
-         <div className="flex flex-col items-center">
-            <span className="text-[9px] font-bold opacity-60 tracking-wider">WEIGHT</span>
-            <div className="font-mono text-sm font-bold flex items-center gap-1">
-               <Scale size={12} className={isDark ? "text-cyan-500" : "text-blue-500"}/>
-               {stats.totalWeight}g
-            </div>
-         </div>
-
-         {/* Price (INR) */}
-         <div className="flex flex-col items-center">
-            <span className="text-[9px] font-bold opacity-60 tracking-wider">COST</span>
-            <div className="font-mono text-sm font-bold flex items-center gap-1">
-               <IndianRupee size={12} className={isDark ? "text-emerald-400" : "text-green-600"}/>
-               {stats.totalPrice.toLocaleString('en-IN')}
-            </div>
-         </div>
-
-         {/* TWR */}
-         <div className="flex flex-col items-center">
-            <span className="text-[9px] font-bold opacity-60 tracking-wider">TWR</span>
-            <div className={`font-mono text-sm font-bold flex items-center gap-1 ${stats.twr > 4 ? "text-emerald-500" : (stats.twr > 0 ? "text-amber-500" : "")}`}>
-               <Gauge size={12} />
-               {stats.twr > 0 ? `${stats.twr}:1` : "-"}
-            </div>
-         </div>
-      </div>
-
-      {/* Dynamic Warning Label */}
-      <AnimatePresence>
-        {stats.warnings.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0, width: 0, scale: 0.8 }} 
-            animate={{ opacity: 1, width: 'auto', scale: 1 }} 
-            exit={{ opacity: 0, width: 0, scale: 0.8 }}
-            className="flex items-center gap-2 pl-4 border-l border-red-500/30 overflow-hidden"
-          >
-             <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
-                <AlertTriangle size={16} className="text-red-500" />
-             </div>
-             <span className="text-[10px] font-bold text-red-400 whitespace-nowrap">OVER VOLTAGE</span>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
-  );
-};
-
 // --- MAIN BUILDER PAGE ---
 export default function BuilderPage() {
   const { theme } = useTheme(); 
@@ -235,11 +275,15 @@ export default function BuilderPage() {
   const isGridVisible = useDroneStore((s) => s.isGridVisible);
   const isWireframe = useDroneStore((s) => s.isWireframe);
   const isExploded = useDroneStore((s) => s.isExploded);
-  const isPanMode = useDroneStore((s) => s.isPanMode); // NEW
+  const isPanMode = useDroneStore((s) => s.isPanMode);
+  const showCoG = useDroneStore((s) => s.showCoG); // NEW
+  
   const toggleGrid = useDroneStore((s) => s.toggleGrid);
   const toggleWireframe = useDroneStore((s) => s.toggleWireframe);
   const toggleExploded = useDroneStore((s) => s.toggleExploded);
-  const togglePanMode = useDroneStore((s) => s.togglePanMode); // NEW
+  const togglePanMode = useDroneStore((s) => s.togglePanMode);
+  const toggleCoG = useDroneStore((s) => s.toggleCoG); // NEW
+  
   const cameraActions = useDroneStore((s) => s.cameraActions);
   const togglePartGhost = useDroneStore((s) => s.togglePartGhost);
 
@@ -391,6 +435,8 @@ export default function BuilderPage() {
                      
                      <ViewBtn onClick={togglePanMode} icon={<Hand size={14}/>} active={isPanMode} tooltip="Pan Mode (Hand Tool)" />
                      <ViewBtn onClick={toggleExploded} icon={<Layers size={14}/>} active={isExploded} tooltip="Exploded View" />
+                     <ViewBtn onClick={toggleCoG} icon={<Crosshair size={14}/>} active={showCoG} tooltip="Show Center of Gravity" /> {/* NEW */}
+                     
                      <ViewBtn onClick={toggleWireframe} icon={<Eye size={14}/>} active={isWireframe} tooltip="Global X-Ray" />
                      <ViewBtn onClick={toggleGrid} icon={<GridIcon size={14}/>} active={isGridVisible} tooltip="Toggle Grid" />
                      <ViewBtn onClick={cameraActions.reset} icon={<Maximize size={14}/>} tooltip="Reset View" />

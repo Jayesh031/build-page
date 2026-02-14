@@ -21,19 +21,71 @@ const FILE_MAP = {
 
 Object.values(FILE_MAP).forEach(url => useGLTF.preload(url));
 
+// --- COG VISUALIZER ---
+function CoGVisualizer() {
+  const parts = useDroneStore((s) => s.parts);
+  const showCoG = useDroneStore((s) => s.showCoG);
+  const isExploded = useDroneStore((s) => s.isExploded);
+
+  const cog = useMemo(() => {
+    if (parts.length === 0) return null;
+
+    let totalWeight = 0;
+    let sumX = 0;
+    let sumY = 0;
+    let sumZ = 0;
+
+    parts.forEach(part => {
+        const variantData = VARIANTS[part.type]?.find(v => v.label === part.variant) || VARIANTS[part.type]?.[0];
+        const weight = variantData?.weight || 0;
+
+        if (weight > 0) {
+            totalWeight += weight;
+            sumX += part.position[0] * weight;
+            sumY += part.position[1] * weight; 
+            sumZ += part.position[2] * weight;
+        }
+    });
+
+    if (totalWeight === 0) return null;
+
+    return new THREE.Vector3(sumX / totalWeight, sumY / totalWeight, sumZ / totalWeight);
+  }, [parts]); 
+
+  if (!showCoG || !cog || isExploded) return null;
+
+  return (
+    <group position={cog}>
+        <mesh>
+            <sphereGeometry args={[2, 16, 16]} />
+            <meshBasicMaterial color="#ef4444" wireframe />
+        </mesh>
+        <mesh>
+            <sphereGeometry args={[1.5, 16, 16]} />
+            <meshBasicMaterial color="#ef4444" transparent opacity={0.8} />
+        </mesh>
+        <mesh position={[0, -10, 0]}>
+            <cylinderGeometry args={[0.1, 0.1, 20]} />
+            <meshBasicMaterial color="#ef4444" transparent opacity={0.6} />
+        </mesh>
+    </group>
+  );
+}
+
 function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...props }) {
   const gltf = useGLTF(FILE_MAP[type]);
   const scene = useMemo(() => gltf.scene.clone(), [gltf.scene, type]);
   const isWireframe = useDroneStore((s) => s.isWireframe);
   const isExploded = useDroneStore((s) => s.isExploded);
+  const isArmed = useDroneStore((s) => s.isArmed); 
   
   const groupRef = useRef();
+  const innerMeshRef = useRef();
 
-  // --- EXPLODED VIEW LOGIC ---
   useFrame((state, delta) => {
     if (!groupRef.current) return;
 
-    let targetY = position[1]; // Default: Real position
+    let targetY = position[1]; 
 
     if (isExploded && !isGhost) {
        let offset = 0;
@@ -43,7 +95,6 @@ function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...prop
        if (type === 'fc') offset = 15;
        if (type === 'esc') offset = 8;
        if (type.includes('motor')) offset = 5;
-       
        targetY += offset;
     }
 
@@ -51,6 +102,14 @@ function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...prop
     groupRef.current.position.z = position[2];
     groupRef.current.position.y = THREE.MathUtils.lerp(groupRef.current.position.y, targetY, delta * 10);
     groupRef.current.rotation.set(...rotation);
+
+    if (isArmed && type.includes('propellor') && !isGhost) {
+        const speed = 25 * delta; 
+        const direction = type === 'propellor_cw' ? -1 : 1;
+        if (innerMeshRef.current) {
+            innerMeshRef.current.rotation.y += speed * direction;
+        }
+    }
   });
 
   useEffect(() => {
@@ -120,7 +179,10 @@ function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...prop
       onContextMenu={handlePartRightClick}
       onClick={(e) => { if(!isGhost) { e.stopPropagation(); props.onSelect(); } }}
     >
-      <primitive object={scene} />
+      <group ref={innerMeshRef}>
+          <primitive object={scene} />
+      </group>
+
       {isActive && !isGhost && (
         <mesh position={[0, -5, 0]} rotation={[-Math.PI/2, 0, 0]}>
            <ringGeometry args={[8, 9, 32]} />
@@ -131,7 +193,7 @@ function Model({ type, position, rotation, isGhost, isGhosted, isActive, ...prop
   );
 }
 
-// --- INTELLIGENT SNAP MANAGER ---
+// --- UPDATED DRAG MANAGER (With Frame Lock) ---
 function DragManager() {
   const { camera, gl } = useThree();
   const draggedPartType = useDroneStore((s) => s.draggedPartType);
@@ -152,6 +214,15 @@ function DragManager() {
 
   useFrame(() => {
     if (!draggedPartType || !ghostRef.current) return;
+    
+    // --- 1. FRAME LOCK LOGIC ---
+    // If it's a bottom plate, FORCE it to 0,0,0 visually
+    if (draggedPartType.includes('bottom_plate')) {
+        ghostRef.current.position.set(0, 0, 0);
+        return; // Skip normal logic
+    }
+    // ---------------------------
+
     if (snapPosition && ghostRef.current) {
         ghostRef.current.position.set(...snapPosition);
     }
@@ -164,6 +235,14 @@ function DragManager() {
       e.preventDefault(); 
       if (!draggedPartType || !ghostRef.current) return;
       
+      // --- 1. FRAME LOCK LOGIC ---
+      if (draggedPartType.includes('bottom_plate')) {
+          ghostRef.current.position.set(0, 0, 0);
+          ghostRef.current.visible = true;
+          return;
+      }
+      // ---------------------------
+
       const rect = canvas.getBoundingClientRect();
       const x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
@@ -206,6 +285,7 @@ function DragManager() {
     const handleDrop = (e) => {
       e.preventDefault();
       if (draggedPartType && ghostRef.current?.visible) {
+        // The store handles the 0,0,0 override, but we send the visual pos anyway
         const finalPos = snapPosition || ghostRef.current.position.toArray();
         spawnPart(draggedPartType, finalPos);
       }
@@ -234,7 +314,6 @@ function DragManager() {
   return null;
 }
 
-// --- UPDATED CAMERA MANAGER WITH PAN SUPPORT ---
 function CameraManager() {
   const { camera, gl } = useThree();
   const controlsRef = useRef(); 
@@ -247,7 +326,6 @@ function CameraManager() {
 
     setMainControlsRef(controlsRef);
     
-    // --- MOUSE BUTTON MAPPING ---
     if (isPanMode) {
         controlsRef.current.mouseButtons.LEFT = THREE.MOUSE.PAN;
         controlsRef.current.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
@@ -255,7 +333,6 @@ function CameraManager() {
         controlsRef.current.mouseButtons.LEFT = THREE.MOUSE.ROTATE;
         controlsRef.current.mouseButtons.RIGHT = THREE.MOUSE.PAN;
     }
-    // ----------------------------
 
     setCameraActions({
         reset: () => {
@@ -288,7 +365,7 @@ function CameraManager() {
             setSide: () => {},
         });
     };
-  }, [camera, setCameraActions, setMainControlsRef, isPanMode]); // Re-run when mode changes
+  }, [camera, setCameraActions, setMainControlsRef, isPanMode]);
 
   return <OrbitControls ref={controlsRef} args={[camera, gl.domElement]} makeDefault />;
 }
@@ -337,6 +414,8 @@ export default function DroneScene({ isDark, isRightCollapsed }) {
         )}
         
         <ContactShadows position={[0, -0.01, 0]} opacity={0.4} scale={200} blur={2} far={10} />
+
+        <CoGVisualizer />
 
         <Suspense fallback={null}>
           {parts.map((part) => (
