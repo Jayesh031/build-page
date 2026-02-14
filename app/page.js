@@ -1,11 +1,12 @@
 "use client";
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from 'zustand';
 import { 
   ChevronRight, ChevronLeft, RotateCcw, Box, Layers, Zap, Cpu, 
   Move, Sliders, Minus, Plus, ChevronDown, Check, X as CloseIcon,
-  Maximize, Eye, Grid as GridIcon, Cube, LayoutTemplate, EyeOff, Trash2
+  Maximize, Eye, Grid as GridIcon, Cube, LayoutTemplate, EyeOff, Trash2,
+  AlertTriangle, Scale, IndianRupee, Activity, Gauge
 } from 'lucide-react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { GizmoHelper, GizmoViewport } from '@react-three/drei';
@@ -39,7 +40,6 @@ const Tooltip = ({ text, isDark }) => (
   </motion.div>
 );
 
-// --- UPDATED: CLEAN TRASH BUTTON ---
 const TrashButton = ({ onClick, isDark }) => {
   return (
     <button 
@@ -77,8 +77,8 @@ const CustomSelect = ({ options, value, onChange, isDark, placeholder }) => {
         {isOpen && (
           <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 10 }} className={`absolute top-full left-0 right-0 mt-2 z-50 rounded-xl border shadow-2xl overflow-hidden max-h-48 overflow-y-auto ${isDark ? "bg-slate-900 border-cyan-500/30 shadow-cyan-500/10" : "bg-white border-slate-200"}`}>
             {options.map((opt) => (
-              <button key={opt} onClick={() => { onChange(opt); setIsOpen(false); }} className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors flex items-center justify-between ${isDark ? "hover:bg-cyan-500/10 text-slate-200 border-b border-white/5 last:border-0" : "hover:bg-slate-50 text-slate-700"} ${value === opt ? (isDark ? "bg-cyan-500/20 text-cyan-300" : "bg-blue-50 text-blue-600") : ""}`}>
-                {opt} {value === opt && <Check size={12} />}
+              <button key={opt.label} onClick={() => { onChange(opt.label); setIsOpen(false); }} className={`w-full text-left px-4 py-3 text-xs font-bold transition-colors flex items-center justify-between ${isDark ? "hover:bg-cyan-500/10 text-slate-200 border-b border-white/5 last:border-0" : "hover:bg-slate-50 text-slate-700"} ${value === opt.label ? (isDark ? "bg-cyan-500/20 text-cyan-300" : "bg-blue-50 text-blue-600") : ""}`}>
+                {opt.label} {value === opt.label && <Check size={12} />}
               </button>
             ))}
           </motion.div>
@@ -88,7 +88,7 @@ const CustomSelect = ({ options, value, onChange, isDark, placeholder }) => {
   );
 };
 
-// --- GIZMO COMPONENT ---
+// --- GIZMO ---
 function GizmoSync({ mainControlsRef }) {
    const { camera } = useThree();
    useFrame(() => {
@@ -116,6 +116,99 @@ const SidebarGizmo = ({ isDark }) => {
   );
 };
 
+// --- FLIGHT STATUS BAR ---
+const FlightStatusBar = ({ isDark }) => {
+  const parts = useDroneStore((s) => s.parts);
+  
+  const stats = useMemo(() => {
+    let totalWeight = 0;
+    let totalPrice = 0;
+    let totalThrust = 0;
+    let voltage = 0;
+    let maxEscVoltage = 999;
+    let warnings = [];
+
+    parts.forEach(p => {
+      const variantList = VARIANTS[p.type];
+      const data = variantList?.find(v => v.label === p.variant);
+      
+      if (data) {
+        totalWeight += data.weight || 0;
+        totalPrice += data.price || 0;
+        
+        if (p.type === 'battery') voltage = data.voltage || 0;
+        if (p.type === 'esc') maxEscVoltage = Math.min(maxEscVoltage, data.maxVoltage || 999);
+        if (p.type.includes('motor')) totalThrust += (data.thrust || 0);
+      }
+    });
+
+    if (voltage > maxEscVoltage) {
+      warnings.push("VOLTAGE WARNING");
+    }
+    
+    // TWR Calculation
+    const twr = totalWeight > 0 ? (totalThrust / totalWeight).toFixed(1) : 0;
+
+    return { totalWeight, totalPrice, twr, warnings };
+  }, [parts]);
+
+  return (
+    <div className={`pointer-events-auto absolute top-24 left-1/2 transform -translate-x-1/2 z-30 flex items-center gap-4 px-6 py-3 rounded-full border backdrop-blur-xl shadow-2xl transition-all
+      ${isDark ? "bg-[#0f172a]/80 border-cyan-500/30 text-slate-200" : "bg-white/90 border-slate-200 shadow-slate-200/50 text-slate-700"}`}>
+      
+      <div className={`pr-4 border-r ${isDark ? "border-cyan-500/20" : "border-slate-300"}`}>
+        <Activity size={18} className={isDark ? "text-cyan-400" : "text-blue-600"} />
+      </div>
+
+      <div className="flex items-center gap-6">
+         {/* Weight */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">WEIGHT</span>
+            <div className="font-mono text-sm font-bold flex items-center gap-1">
+               <Scale size={12} className={isDark ? "text-cyan-500" : "text-blue-500"}/>
+               {stats.totalWeight}g
+            </div>
+         </div>
+
+         {/* Price (INR) */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">COST</span>
+            <div className="font-mono text-sm font-bold flex items-center gap-1">
+               <IndianRupee size={12} className={isDark ? "text-emerald-400" : "text-green-600"}/>
+               {stats.totalPrice.toLocaleString('en-IN')}
+            </div>
+         </div>
+
+         {/* TWR */}
+         <div className="flex flex-col items-center">
+            <span className="text-[9px] font-bold opacity-60 tracking-wider">TWR</span>
+            <div className={`font-mono text-sm font-bold flex items-center gap-1 ${stats.twr > 4 ? "text-emerald-500" : (stats.twr > 0 ? "text-amber-500" : "")}`}>
+               <Gauge size={12} />
+               {stats.twr > 0 ? `${stats.twr}:1` : "-"}
+            </div>
+         </div>
+      </div>
+
+      {/* Dynamic Warning Label */}
+      <AnimatePresence>
+        {stats.warnings.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, width: 0, scale: 0.8 }} 
+            animate={{ opacity: 1, width: 'auto', scale: 1 }} 
+            exit={{ opacity: 0, width: 0, scale: 0.8 }}
+            className="flex items-center gap-2 pl-4 border-l border-red-500/30 overflow-hidden"
+          >
+             <div className="w-8 h-8 rounded-full bg-red-500/20 flex items-center justify-center animate-pulse">
+                <AlertTriangle size={16} className="text-red-500" />
+             </div>
+             <span className="text-[10px] font-bold text-red-400 whitespace-nowrap">OVER VOLTAGE</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
 // --- MAIN BUILDER PAGE ---
 export default function BuilderPage() {
   const { theme } = useTheme(); 
@@ -133,6 +226,7 @@ export default function BuilderPage() {
   const rotateActivePart = useDroneStore((s) => s.rotateActivePart);
   const resetScene = useDroneStore((s) => s.resetScene);
   const deletePart = useDroneStore((s) => s.deletePart);
+  const updatePartVariant = useDroneStore((s) => s.updatePartVariant);
   const placementMode = useDroneStore((s) => s.placementMode);
   const togglePlacementMode = useDroneStore((s) => s.togglePlacementMode);
   const { undo, redo, pastStates, futureStates } = useStore(useDroneStore.temporal, (state) => state);
@@ -155,6 +249,26 @@ export default function BuilderPage() {
 
   const activePart = parts.find(p => p.id === activePartId);
 
+  // Sync Right Panel with Active Part
+  useEffect(() => {
+    if (activePartId) {
+       const part = parts.find(p => p.id === activePartId);
+       if (part) {
+          setSelectedPartType(part.type);
+          setSelectedVariant(part.variant);
+       }
+    }
+  }, [activePartId, parts]);
+
+  const handleVariantChange = (val) => {
+     setSelectedVariant(val);
+     if (activePartId) {
+        updatePartVariant(activePartId, val);
+     } else {
+        setConfiguredVariantData({ type: selectedPartType, variant: val });
+     }
+  };
+
   // Helpers
   const getIcon = (type) => {
     if (type.includes('motor')) return <Zap size={18} />;
@@ -166,21 +280,29 @@ export default function BuilderPage() {
   const getFriendlyName = (type) => INVENTORY.frames.find(i => i.type === type)?.label || INVENTORY.propulsion.find(i => i.type === type)?.label || INVENTORY.electronics.find(i => i.type === type)?.label || type;
   const handleInventoryClick = (type) => { setSelectedPartType(type); setSelectedVariant(''); setConfiguredVariantData({ type, variant: null }); };
 
+  // --- FIX: SAFE GETTERS ---
   const getCurrentValue = () => {
     if(!activePart) return 0;
-    if(activeAxis === 'X') return activePart.position[0];
-    if(activeAxis === 'Y') return activePart.position[1];
-    if(activeAxis === 'Z') return activePart.position[2];
-    return 0;
+    let val = 0;
+    if(activeAxis === 'X') val = activePart.position[0];
+    if(activeAxis === 'Y') val = activePart.position[1];
+    if(activeAxis === 'Z') val = activePart.position[2];
+    // Safety check: Return 0 if NaN to prevent React input crash
+    return isNaN(val) ? 0 : val;
   };
+
   const handleValueChange = (val) => {
     if(!activePart) return;
+    // Safety check: Prevent NaN from being saved to store
+    const safeVal = isNaN(val) ? 0 : val;
+    
     const newPos = [...activePart.position];
-    if(activeAxis === 'X') newPos[0] = val;
-    if(activeAxis === 'Y') newPos[1] = val;
-    if(activeAxis === 'Z') newPos[2] = val;
+    if(activeAxis === 'X') newPos[0] = safeVal;
+    if(activeAxis === 'Y') newPos[1] = safeVal;
+    if(activeAxis === 'Z') newPos[2] = safeVal;
     updatePartPosition(activePart.id, newPos[0], newPos[1], newPos[2]);
   };
+  // -------------------------
 
   const containerClass = isDark 
     ? "bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-[#0f172a] via-[#090e1a] to-black text-slate-100" 
@@ -209,6 +331,8 @@ export default function BuilderPage() {
     <div className={`relative h-screen w-screen overflow-hidden ${containerClass}`}>
       <GlobalStyles />
       <NavbarBackdrop isDark={isDark} />
+
+      <FlightStatusBar isDark={isDark} />
 
       <div className="absolute inset-0 z-0">
          <DroneScene isDark={isDark} isRightCollapsed={isRightCollapsed} />
@@ -243,7 +367,6 @@ export default function BuilderPage() {
             ))}
           </div>
           <div className={`p-4 border-t grid grid-cols-2 gap-2 ${isDark ? "border-cyan-500/20" : "border-black/5"}`}>
-             {/* UPDATED: COLOURED UNDO/REDO BUTTONS */}
              <button onClick={() => undo()} disabled={pastStates.length === 0} className={`py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${isDark ? "bg-cyan-500/20 hover:bg-cyan-500/40 border-cyan-500/50 text-cyan-300 disabled:bg-slate-800 disabled:text-slate-600 disabled:border-transparent" : "bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:bg-slate-100 disabled:text-slate-400"}`}>Undo</button>
              <button onClick={() => redo()} disabled={futureStates.length === 0} className={`py-2 rounded-lg text-[10px] font-bold uppercase tracking-wider transition-all shadow-lg ${isDark ? "bg-cyan-500/20 hover:bg-cyan-500/40 border-cyan-500/50 text-cyan-300 disabled:bg-slate-800 disabled:text-slate-600 disabled:border-transparent" : "bg-blue-100 hover:bg-blue-200 text-blue-700 disabled:bg-slate-100 disabled:text-slate-400"}`}>Redo</button>
           </div>
@@ -258,24 +381,17 @@ export default function BuilderPage() {
 
            {/* --- TOP: VIEWPORT COMMAND CENTER --- */}
            <div className={`flex flex-col h-[30%] rounded-3xl backdrop-blur-xl border border-t-white/10 p-4 ${glassPanel} relative overflow-hidden pointer-events-auto`}>
-              {/* Header */}
               <div className={`text-[10px] font-bold uppercase tracking-widest mb-3 ${isDark ? "text-cyan-400/80" : "text-slate-500 opacity-60"}`}>Viewport</div>
-              
               <div className="flex h-full gap-3">
-                 {/* Left: Controls Grid */}
                  <div className="grid grid-cols-3 gap-2 content-start z-10">
                      <ViewBtn onClick={cameraActions.setTop} icon={<LayoutTemplate size={14}/>} tooltip="Top View" />
                      <ViewBtn onClick={cameraActions.setFront} icon={<Box size={14}/>} tooltip="Front View" />
                      <ViewBtn onClick={cameraActions.setSide} icon={<Box size={14} className="rotate-90"/>} tooltip="Side View" />
-                     
-                     <div className="h-2 col-span-3"></div> {/* Spacer */}
-                     
+                     <div className="h-2 col-span-3"></div> 
                      <ViewBtn onClick={toggleWireframe} icon={<Eye size={14}/>} active={isWireframe} tooltip="Global X-Ray" />
                      <ViewBtn onClick={toggleGrid} icon={<GridIcon size={14}/>} active={isGridVisible} tooltip="Toggle Grid" />
                      <ViewBtn onClick={cameraActions.reset} icon={<Maximize size={14}/>} tooltip="Reset View" />
                  </div>
-
-                 {/* Right: Gizmo (Interactive 3D Compass) */}
                  <div className="flex-1 relative rounded-2xl border bg-black/5 overflow-hidden">
                      <SidebarGizmo isDark={isDark} />
                  </div>
@@ -294,7 +410,7 @@ export default function BuilderPage() {
                   </div>
                 </div>
                 {VARIANTS[selectedPartType]?.length > 0 && (
-                  <CustomSelect options={VARIANTS[selectedPartType]} value={selectedVariant} placeholder="Select Variant..." isDark={isDark} onChange={(val) => { setSelectedVariant(val); setConfiguredVariantData({ type: selectedPartType, variant: val }); }} />
+                  <CustomSelect options={VARIANTS[selectedPartType]} value={selectedVariant} placeholder="Select Variant..." isDark={isDark} onChange={handleVariantChange} />
                 )}
               </div>
 
@@ -342,7 +458,6 @@ export default function BuilderPage() {
                     {hoveredBtn === "rotate" && <Tooltip text="Rotate 45°" isDark={isDark} />}
                 </div>
 
-                {/* SPECIFIC PART X-RAY TOGGLE */}
                 <div className="relative" onMouseEnter={() => setHoveredBtn("ghost")} onMouseLeave={() => setHoveredBtn(null)}>
                     <button onClick={togglePartGhost} className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${activePart?.isGhosted ? (isDark ? "bg-cyan-500 text-black" : "bg-blue-600 text-white") : (isDark ? "hover:bg-cyan-500/20 text-white" : "hover:bg-slate-100 text-slate-700")}`}>
                        {activePart?.isGhosted ? <EyeOff size={18} /> : <Eye size={18} />}
@@ -363,7 +478,6 @@ export default function BuilderPage() {
                 </div>
              </div>
 
-             {/* AXIS CONTROLS */}
              <div className="flex items-center gap-4 min-w-[260px] px-2">
                {placementMode === 'precision' ? (
                  <>

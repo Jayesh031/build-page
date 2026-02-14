@@ -1,19 +1,58 @@
 import { create } from 'zustand';
 import { temporal } from 'zundo';
 
+// --- RICH DATA VARIANTS (Indian Rupees ₹) ---
 export const VARIANTS = {
-  'battery': ['4S 1500mAh', '6S 1100mAh', '6S 1300mAh'],
-  'motor_cw': ['1750KV', '1950KV', '2450KV', '2750KV'],
-  'motor_ccw': ['1750KV', '1950KV', '2450KV', '2750KV'],
-  'propellor_cw': ['5040 Tri-Blade', '5045 Bullnose', '5149 Freestyle'],
-  'propellor_ccw': ['5040 Tri-Blade', '5045 Bullnose', '5149 Freestyle'],
-  'fc': ['F405 Analog', 'F722 HD', 'H7 Extreme'],
-  'esc': ['45A BlHeli_S', '55A BlHeli_32', '60A AM32'],
-  'receiver': ['ELRS 2.4G', 'TBS Crossfire', 'FrSky R-XSR'],
-  'gps_module': ['M8N Mini', 'M10 GPS', 'Beitian BN-880'],
-  'bottom_plate': [], 
-  'top_plate': [],
-  'arm': []
+  'battery': [
+    { label: '4S 1500mAh', weight: 175, price: 1850, voltage: 16.8, type: 'battery' },
+    { label: '6S 1100mAh', weight: 190, price: 2450, voltage: 25.2, type: 'battery' },
+    { label: '6S 1300mAh', weight: 210, price: 2899, voltage: 25.2, type: 'battery' } // High Voltage
+  ],
+  'motor_cw': [
+    { label: '1750KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1300 },
+    { label: '1950KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1400 },
+    { label: '2450KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1100 },
+    { label: '2750KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1200 }
+  ],
+  'motor_ccw': [
+    { label: '1750KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1300 },
+    { label: '1950KV', weight: 32, price: 1699, maxVoltage: 25.2, thrust: 1400 },
+    { label: '2450KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1100 },
+    { label: '2750KV', weight: 30, price: 1549, maxVoltage: 16.8, thrust: 1200 }
+  ],
+  'propellor_cw': [
+    { label: '5040 Tri-Blade', weight: 4, price: 150 },
+    { label: '5045 Bullnose', weight: 5, price: 150 },
+    { label: '5149 Freestyle', weight: 4.5, price: 249 }
+  ],
+  'propellor_ccw': [
+    { label: '5040 Tri-Blade', weight: 4, price: 150 },
+    { label: '5045 Bullnose', weight: 5, price: 150 },
+    { label: '5149 Freestyle', weight: 4.5, price: 249 }
+  ],
+  'fc': [
+    { label: 'F405 Analog', weight: 8, price: 3500 },
+    { label: 'F722 HD', weight: 9, price: 4800 },
+    { label: 'H7 Extreme', weight: 10, price: 7500 }
+  ],
+  'esc': [
+    { label: '45A BlHeli_S', weight: 12, price: 3200, maxVoltage: 16.8 }, // 4S Limit
+    { label: '55A BlHeli_32', weight: 14, price: 5500, maxVoltage: 25.2 }, // 6S Limit
+    { label: '60A AM32', weight: 15, price: 6200, maxVoltage: 25.2 }
+  ],
+  'receiver': [
+    { label: 'ELRS 2.4G', weight: 1, price: 1200 },
+    { label: 'TBS Crossfire', weight: 3, price: 2400 },
+    { label: 'FrSky R-XSR', weight: 2, price: 1100 }
+  ],
+  'gps_module': [
+    { label: 'M8N Mini', weight: 15, price: 1400 },
+    { label: 'M10 GPS', weight: 10, price: 1950 },
+    { label: 'Beitian BN-880', weight: 18, price: 1600 }
+  ],
+  'bottom_plate': [{ label: 'Standard Carbon', weight: 45, price: 1800 }], 
+  'top_plate': [{ label: 'Standard Carbon', weight: 15, price: 800 }],
+  'arm': [{ label: '5-inch Arm', weight: 12, price: 450 }]
 };
 
 export const INVENTORY = {
@@ -87,7 +126,7 @@ export const useDroneStore = create(
              if (configuredVariantData && configuredVariantData.type === partType && configuredVariantData.variant) {
                  appliedVariant = configuredVariantData.variant;
              } else {
-                 appliedVariant = availableVariants[0]; 
+                 appliedVariant = availableVariants[0].label; 
              }
         }
 
@@ -99,7 +138,7 @@ export const useDroneStore = create(
             position: position, 
             rotation: [0, 0, 0], 
             isLocked: false,
-            isGhosted: false, // Individual X-Ray State
+            isGhosted: false, 
           }],
           activePartId: uniqueId,
           isCarrying: false,
@@ -113,6 +152,14 @@ export const useDroneStore = create(
         }
       },
       
+      // --- NEW ACTION: Update Existing Part Variant ---
+      updatePartVariant: (id, variant) => set((state) => ({
+        parts: state.parts.map(p => 
+          p.id === id ? { ...p, variant: variant } : p
+        )
+      })),
+      // ------------------------------------------------
+
       updatePartPosition: (id, x, y, z) => set((state) => {
         const part = state.parts.find(p => p.id === id);
         if(!part) return {};
@@ -138,7 +185,6 @@ export const useDroneStore = create(
         }));
       },
 
-      // Toggle Single Part X-Ray
       togglePartGhost: () => {
          const { activePartId } = get();
          if (!activePartId) return;
